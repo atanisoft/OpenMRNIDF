@@ -427,15 +427,6 @@ private:
     /// Default static IP provided by ESP-IDF is 192.168.4.1.
     ESP32_ADAPTER_IP_INFO_TYPE *softAPStaticIP_{nullptr};
 
-    /// Cached copy of the file descriptor passed into apply_configuration.
-    /// This is internally used by the wifi_manager_task to processed deferred
-    /// configuration load.
-    int configFd_{-1};
-
-    /// Calculated CRC-32 of cfg_ data. Used to detect changes in configuration
-    /// which may require the wifi_manager_task to reload config.
-    uint32_t configCrc32_{0};
-
     /// Internal flag to request the wifi_manager_task reload configuration.
     bool configReloadRequested_{true};
 
@@ -453,17 +444,34 @@ private:
     /// restarted.
     bool waitForStationConnect_{true};
 
+    /// Cached copy of the radio sleep parameter, if true the WiFi radio will
+    /// use low power mode.
+    bool enableRadioSleep_;
+
+    /// Cached copy of the WiFi TX power limit.
+    int8_t wifiTXPower_;
+
     /// If true the esp32 will attempt to create an uplink connection.
-    bool uplinkEnabled_{true};
+    bool enableUplink_;
+
+    /// Cached copy of the uplink mDNS search value.
+    std::string uplinkAutoService_{
+        openlcb::TcpDefs::MDNS_SERVICE_NAME_GRIDCONNECT_CAN_TCP};
+
+    /// Cached copy of the manual uplink hostname.
+    std::string uplinkManualHost_;
+
+    /// Cached copy of the manual uplink port.
+    uint16_t uplinkManualPort_;
+
+    /// If true the esp32 will create and advertise itself as a hub.
+    bool enableHub_;
 
     /// @ref GcTcpHub for this node's hub if enabled.
     std::unique_ptr<GcTcpHub> hub_;
 
     /// mDNS service name being advertised by the hub, if enabled.
     std::string hubServiceName_;
-
-    /// If true the esp32 will create and advertise itself as a hub.
-    bool enableHub_{false};
 
     /// Port to use for the hub.
     uint16_t hubPort_;
@@ -510,23 +518,6 @@ private:
     /// Network interfaces that are managed by Esp32WiFiManager.
     esp_netif_t *esp_netifs[ESP_IF_MAX]{nullptr, nullptr, nullptr};
 #endif // IDF v4.1+
-
-    /// Cached copy of the manual uplink hostname.
-    std::string uplinkManualHost_;
-
-    /// Cached copy of the manual uplink port.
-    uint16_t uplinkManualPort_;
-
-    /// Cached copy of the uplink mDNS search value.
-    std::string uplinkAutoService_{
-        openlcb::TcpDefs::MDNS_SERVICE_NAME_GRIDCONNECT_CAN_TCP};
-
-    /// Cached copy of the radio sleep parameter, if true the WiFi radio will
-    /// use low power mode.
-    bool enableRadioSleep_{false};
-
-    /// Cached copy of the WiFi TX power limit.
-    int8_t wifiTXPower_{78};
 
     DISALLOW_COPY_AND_ASSIGN(Esp32WiFiManager);
 };

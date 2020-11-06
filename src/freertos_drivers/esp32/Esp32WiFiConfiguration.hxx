@@ -35,6 +35,7 @@
 #ifndef _FREERTOS_DRIVERS_ESP32_ESP32WIFICONFIG_HXX_
 #define _FREERTOS_DRIVERS_ESP32_ESP32WIFICONFIG_HXX_
 
+#include "sdkconfig.h"
 #include "openlcb/ConfigRepresentation.hxx"
 #include "openlcb/ConfiguredTcpConnection.hxx"
 
@@ -184,15 +185,18 @@ CDI_GROUP_ENTRY(sleep, openlcb::Uint8ConfigEntry,
 CDI_GROUP_ENTRY(tx_power, openlcb::Int8ConfigEntry,
     Name(Esp32WiFiConfigurationParams::WIFI_TX_POWER_NAME),
     Description(Esp32WiFiConfigurationParams::WIFI_TX_POWER_DESC), Min(8),
-    Max(79), Default(78),
+    Max(78), Default(78),
     MapValues(Esp32WiFiConfigurationParams::WIFI_TX_POWER_MAP));
-// On the ESP32 S2 we do not expose the hub option.
-#if defined(CONFIG_IDF_TARGET_ESP32)
 /// CDI Configuration to enable this node to be a hub.
 CDI_GROUP_ENTRY(hub, HubConfiguration,
     Name(Esp32WiFiConfigurationParams::HUB_NAME),
-    Description(Esp32WiFiConfigurationParams::HUB_DESC));
+    Description(Esp32WiFiConfigurationParams::HUB_DESC)
+// On the ESP32 S2 hide the Hub option by default since there is less resources
+// available.
+#ifndef CONFIG_IDF_TARGET_ESP32
+    , Hidden(true)
 #endif // CONFIG_IDF_TARGET_ESP32
+);
 /// CDI Configuration for this node's connection to an uplink hub.
 CDI_GROUP_ENTRY(uplink, UplinkConfiguration,
     Name(Esp32WiFiConfigurationParams::UPLINK_NAME),

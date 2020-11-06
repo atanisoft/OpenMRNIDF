@@ -243,74 +243,71 @@ ConfigUpdateListener::UpdateAction Esp32WiFiManager::apply_configuration(
     AutoNotify n(done);
     LOG(VERBOSE, "Esp32WiFiManager::apply_configuration(%d, %d)", fd,
         initial_load);
-
-    // Cache the fd for later use by the wifi background task.
-    configFd_ = fd;
     initialConfigLoad_ = initial_load;
 
-    // Load the CDI entry into memory to do an CRC-32 check against our last
-    // loaded configuration so we can avoid reloading configuration when there
-    // are no interesting changes.
-    unique_ptr<uint8_t[]> crcbuf(new uint8_t[cfg_.size()]);
-
-    // If we are unable to seek to the right position in the persistent storage
-    // give up and request a reboot.
-    if (lseek(fd, cfg_.offset(), SEEK_SET) != cfg_.offset())
+    bool enableRadioSleep = CDI_READ_TRIM_DEFAULT(cfg_.sleep, fd);
+    int8_t wifiTXPower = CDI_READ_TRIM_DEFAULT(cfg_.tx_power, fd);
+    if (enableRadioSleep != enableRadioSleep_ || wifiTXPower != wifiTXPower_)
     {
-        LOG_ERROR("lseek failed to reset fd offset, REBOOT_NEEDED");
-        return ConfigUpdateListener::UpdateAction::REBOOT_NEEDED;
+        configReloadRequested_ = true;
     }
+    enableRadioSleep_ = enableRadioSleep;
+    wifiTXPower_ = wifiTXPower;
 
-    // Read the full configuration to the buffer for crc check.
-    FdUtils::repeated_read(fd, crcbuf.get(), cfg_.size());
-
-    // Calculate CRC-32 from the loaded buffer.
-    uint32_t configCrc32 = crc32_le(0, crcbuf.get(), cfg_.size());
-    LOG(VERBOSE, "existing config CRC-32: \"%s\", new CRC-32: \"%s\"",
-        integer_to_string(configCrc32_, 0).c_str(),
-        integer_to_string(configCrc32, 0).c_str());
-
-    // update local cache of config settings before waking the background task.
-    uplinkEnabled_ = CDI_READ_TRIM_DEFAULT(cfg_.uplink().enable, fd);
+    // if uplink is enabled load the config related to uplink and check if it
+    // has changed.
+    if (CDI_READ_TRIM_DEFAULT(cfg_.uplink().enable, fd))
+    {
+        configReloadRequested_ = !enableUplink_;
+        enableUplink_ = true;
+    }
+    else if (enableUplink_)
+    {
+        enableUplink_ = false;
+        configReloadRequested_ = true;
+    }
     uplinkManualHost_ = cfg_.uplink().manual().ip_address().read(fd);
-    uplinkManualPort_ =
-        CDI_READ_TRIM_DEFAULT(cfg_.uplink().manual().port, fd);
+    uplinkManualPort_ = CDI_READ_TRIM_DEFAULT(cfg_.uplink().manual().port, fd);
     uplinkAutoService_ = cfg_.uplink().automatic().service_name().read(fd);
-    enableRadioSleep_ = CDI_READ_TRIM_DEFAULT(cfg_.sleep, fd);
-#if defined(CONFIG_IDF_TARGET_ESP32)
-    enableHub_ = CDI_READ_TRIM_DEFAULT(cfg_.hub().enable, fd);
+
+    // if hub is enabled load the config related to uplink and check if it has
+    // changed.
+    if (CDI_READ_TRIM_DEFAULT(cfg_.hub().enable, fd))
+    {
+        configReloadRequested_ = !enableHub_;
+        enableHub_ = true;
+    }
+    else if (enableHub_)
+    {
+        enableHub_ = false;
+        configReloadRequested_ = true;
+    }
     hubServiceName_ = cfg_.hub().service_name().read(fd);
     hubPort_ = CDI_READ_TRIM_DEFAULT(cfg_.hub().port, fd);
-#endif // CONFIG_IDF_TARGET_ESP32
-    // Read the desired TX power level from the CDI with a bounds check to
-    // ensure it is does not exceed 78 (max supported by underlying API).
-    wifiTXPower_ =
-        std::min(MAX_WIFI_TX_POWER_API_LIMIT,
-                 (int8_t)CDI_READ_TRIM_DEFAULT(cfg_.tx_power, fd));
+
+    LOG(VERBOSE,
+        "Esp32WiFiManager: uplink:%s (auto:%s, manual:%s:%d) tx:%d sleep:%s "
+        "hub:%s (%s:%d)",
+        enableUplink_ ? "Yes" : "No", uplinkAutoService_.c_str(),
+        uplinkManualHost_.c_str(), uplinkManualPort_, wifiTXPower_,
+        enableRadioSleep_  ? "Yes" : "No", enableHub_ ? "Yes" : "No",
+        hubServiceName_.c_str(), hubPort_);
 
     // if this is not the initial loading of the CDI entry check the CRC-32
     // value and trigger a configuration reload if necessary.
-    if (!initial_load)
-    {
-        if (configCrc32 != configCrc32_)
-        {
-            configReloadRequested_ = true;
-            // If a configuration change has been detected, wake up the
-            // wifi_manager_task so it can consume the change prior to the next
-            // wake up interval.
-            xTaskNotifyGive(wifiTaskHandle_);
-        }
-    }
-    else
+    if (initial_load)
     {
         // This is the initial loading of the CDI entry, start the background
         // task that will manage the node's WiFi connection(s).
         start_wifi_task();
     }
-
-    // Store the calculated CRC-32 for future use when the apply_configuration
-    // method is called to detect any configuration changes.
-    configCrc32_ = configCrc32;
+    else if (configReloadRequested_)
+    {
+        // If a configuration change has been detected, wake up the
+        // wifi_manager_task so it can consume the change prior to the next
+        // wake up interval.
+        xTaskNotifyGive(wifiTaskHandle_);
+    }
 
     // Inform the caller that the configuration has been updated as the wifi
     // task will reload the configuration as part of it's next wake up cycle.
@@ -326,13 +323,11 @@ void Esp32WiFiManager::factory_reset(int fd)
     CDI_FACTORY_RESET(cfg_.sleep);
     CDI_FACTORY_RESET(cfg_.tx_power);
 
-#if defined(CONFIG_IDF_TARGET_ESP32)
     // Hub specific configuration settings.
     CDI_FACTORY_RESET(cfg_.hub().enable);
     CDI_FACTORY_RESET(cfg_.hub().port);
     cfg_.hub().service_name().write(
         fd, TcpDefs::MDNS_SERVICE_NAME_GRIDCONNECT_CAN_TCP);
-#endif // CONFIG_IDF_TARGET_ESP32
 
     // Node link configuration settings.
     CDI_FACTORY_RESET(cfg_.uplink().enable);
@@ -795,18 +790,10 @@ void *Esp32WiFiManager::wifi_manager_task(void *param)
             {
                 wifi->configure_wifi_max_tx_power();
             }
-#if defined(CONFIG_IDF_TARGET_ESP32)
-            if (wifi->enableHub_)
-            {
-                // Since hub mode is enabled start the hub creation process.
-                wifi->start_hub();
-            }
-#endif // CONFIG_IDF_TARGET_ESP32
-            if (wifi->wifiMode_ != WIFI_MODE_AP)
-            {
-                // Start the uplink connection process in the background.
-                wifi->start_uplink();
-            }
+
+            wifi->start_uplink();
+            wifi->start_hub();
+
             wifi->configReloadRequested_ = false;
             wifi->initialConfigLoad_ = false;
         }
@@ -829,20 +816,21 @@ void *Esp32WiFiManager::wifi_manager_task(void *param)
 // Shuts down the hub listener (if enabled and running) for this node.
 void Esp32WiFiManager::stop_hub()
 {
-#if defined(CONFIG_IDF_TARGET_ESP32)
     if (hub_)
     {
         mdns_unpublish(hubServiceName_);
         LOG(INFO, "[Hub] Shutting down TCP/IP listener");
         hub_.reset(nullptr);
     }
-#endif // CONFIG_IDF_TARGET_ESP32
 }
 
 // Creates a hub listener for this node after loading configuration details.
 void Esp32WiFiManager::start_hub()
 {
-#if defined(CONFIG_IDF_TARGET_ESP32)
+    if (!enableHub_ || hub_)
+    {
+        return;
+    }
     LOG(INFO, "[Hub] Starting TCP/IP listener on port %d", hubPort_);
     // TODO: find a better solution for this that does not require a cast and
     // will work with the TCP stack.
@@ -856,7 +844,6 @@ void Esp32WiFiManager::start_hub()
         usleep(HUB_STARTUP_DELAY_USEC);
     }
     mdns_publish(hubServiceName_, hubPort_);
-#endif // CONFIG_IDF_TARGET_ESP32
 }
 
 // Disconnects and shuts down the uplink connector socket if running.
@@ -874,7 +861,7 @@ void Esp32WiFiManager::stop_uplink()
 // the node's hub.
 void Esp32WiFiManager::start_uplink()
 {
-    if (!uplinkEnabled_)
+    if (!enableUplink_ || uplink_)
     {
         return;
     }
@@ -1482,6 +1469,7 @@ void Esp32WiFiManager::on_softap_start()
         // connection failures.
         start_mdns_system();
         start_uplink();
+        start_hub();
     }
 
     // Schedule callbacks via the executor rather than call directly here.
@@ -1499,6 +1487,12 @@ void Esp32WiFiManager::on_softap_start()
 
 void Esp32WiFiManager::on_softap_stop()
 {
+    if (wifiMode_ == WIFI_MODE_AP)
+    {
+        stop_uplink();
+        stop_hub();
+    }
+
     // Schedule callbacks via the executor rather than call directly here.
     {
         OSMutexLock l(&networkCallbacksLock_);
