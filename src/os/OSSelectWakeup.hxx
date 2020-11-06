@@ -193,7 +193,7 @@ private:
     void esp_wakeup();
     void esp_wakeup_from_isr();
 public:
-#if defined(ESP_IDF_VERSION_MAJOR)
+#if defined(ESP_IDF_VERSION_MAJOR) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
     void esp_start_select(esp_vfs_select_sem_t signal_sem, void **args);
     esp_err_t esp_end_select(void *args);
 #else
@@ -205,7 +205,7 @@ private:
     /// FD for waking up select in ESP32 VFS implementation.
     int vfsFd_{-1};
 
-#if defined(ESP_IDF_VERSION_MAJOR)
+#if defined(ESP_IDF_VERSION_MAJOR) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
     /// Semaphore provided by the ESP32 VFS layer to use for waking up the
     /// ESP32 early from the select() call.
     esp_vfs_select_sem_t espSem_{false, nullptr};

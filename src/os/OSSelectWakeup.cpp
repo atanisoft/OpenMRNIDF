@@ -126,7 +126,7 @@ static int wakeup_fd;
 // functions. For previous versions of ESP-IDF it is necessary to use these
 // functions to allow waking up the ESP32 from a select() call due to bugs in
 // the VFS layer.
-#ifndef ESP_IDF_VERSION_MAJOR
+#if !defined(ESP_IDF_VERSION_MAJOR) || ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,0,0)
 extern "C"
 {
     void *sys_thread_sem_get();
@@ -147,7 +147,7 @@ static int esp_wakeup_open(const char * path, int flags, int mode)
     return 0;
 }
 
-#if defined(ESP_IDF_VERSION_MAJOR)
+#if defined(ESP_IDF_VERSION_MAJOR) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
 /// This function is called by the ESP32's select implementation has been
 /// interupted or is ready to wake up.
 /// @param args is the argument passed into the VFS layer when select() was
@@ -172,7 +172,7 @@ static void esp_end_select()
 }
 #endif // IDF v4+
 
-#if defined(ESP_IDF_VERSION_MAJOR)
+#if defined(ESP_IDF_VERSION_MAJOR) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
 /// This function is called by the ESP32's select implementation. It is passed
 /// in as a function pointer to the VFS API.
 /// @param nfds see standard select API
@@ -218,7 +218,7 @@ static esp_err_t esp_start_select(int nfds, fd_set *readfds, fd_set *writefds,
 }
 #endif // IDF v4+
 
-#if defined(ESP_IDF_VERSION_MAJOR)
+#if defined(ESP_IDF_VERSION_MAJOR) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
 /// This function is called by the ESP32's select implementation.
 /// @param signal_sem is the semaphore container provided by the VFS layer that
 /// can be used to wake up the select() call early.
@@ -246,7 +246,7 @@ void OSSelectWakeup::esp_start_select(void *signal_sem)
 }
 #endif // IDF v4+
 
-#if defined(ESP_IDF_VERSION_MAJOR)
+#if defined(ESP_IDF_VERSION_MAJOR) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
 /// This function is called by the ESP32's select implementation has been
 /// interupted or is ready to wake up.
 /// @param args is the argument passed into the VFS layer when select() was
@@ -289,7 +289,7 @@ void OSSelectWakeup::esp_wakeup()
         return;
     }
     woken_ = true;
-#if defined(ESP_IDF_VERSION_MAJOR)
+#if defined(ESP_IDF_VERSION_MAJOR) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
     LOG(VERBOSE, "wakeup es %p %u", espSem_.sem, *(unsigned*)espSem_.sem);
     esp_vfs_select_triggered(espSem_);
 #else
@@ -332,7 +332,7 @@ void OSSelectWakeup::esp_wakeup_from_isr()
     }
     woken_ = true;
     BaseType_t woken = pdFALSE;
-#if defined(ESP_IDF_VERSION_MAJOR)
+#if defined(ESP_IDF_VERSION_MAJOR) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
     esp_vfs_select_triggered_isr(espSem_, &woken);
 #else
     if (espSem_)
@@ -382,7 +382,7 @@ static void esp_vfs_init()
 /// layer via esp_start_select.
 void OSSelectWakeup::esp_allocate_vfs_fd()
 {
-#if !defined(ESP_IDF_VERSION_MAJOR)
+#if !defined(ESP_IDF_VERSION_MAJOR) || ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,0,0)
     lwipSem_ = sys_thread_sem_get();
 #endif // not IDF v4+
     pthread_once(&vfs_init_once, &esp_vfs_init);
