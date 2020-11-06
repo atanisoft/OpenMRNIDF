@@ -477,7 +477,7 @@ void Esp32WiFiManager::wait_for_ssid_connect(bool enable)
 void Esp32WiFiManager::register_network_up_callback(
     esp32_network_up_callback_t callback)
 {
-    OSMutexLock l(&networkCallbacksLock_);
+    const std::lock_guard<std::mutex> lock(networkCallbacksLock_);
     networkUpCallbacks_.push_back(callback);
 }
 
@@ -485,7 +485,7 @@ void Esp32WiFiManager::register_network_up_callback(
 void Esp32WiFiManager::register_network_down_callback(
     esp32_network_down_callback_t callback)
 {
-    OSMutexLock l(&networkCallbacksLock_);
+    const std::lock_guard<std::mutex> lock(networkCallbacksLock_);
     networkDownCallbacks_.push_back(callback);
 }
 
@@ -493,7 +493,7 @@ void Esp32WiFiManager::register_network_down_callback(
 void Esp32WiFiManager::register_network_init_callback(
     esp32_network_init_callback_t callback)
 {
-    OSMutexLock l(&networkCallbacksLock_);
+    const std::lock_guard<std::mutex> lock(networkCallbacksLock_);
     networkInitCallbacks_.push_back(callback);
 }
 
@@ -816,30 +816,34 @@ void *Esp32WiFiManager::wifi_manager_task(void *param)
 // Shuts down the hub listener (if enabled and running) for this node.
 void Esp32WiFiManager::stop_hub()
 {
-    if (hub_)
+    openlcb::SimpleCanStackBase *canStack =
+        static_cast<openlcb::SimpleCanStackBase *>(stack_);
+
+    if (canStack->get_tcp_hub_server())
     {
-        mdns_unpublish(hubServiceName_);
         LOG(INFO, "[Hub] Shutting down TCP/IP listener");
-        hub_.reset(nullptr);
+        canStack->shutdown_tcp_hub_server();
+        mdns_unpublish(hubServiceName_);
     }
 }
 
 // Creates a hub listener for this node after loading configuration details.
 void Esp32WiFiManager::start_hub()
 {
-    if (!enableHub_ || hub_)
-    {
-        return;
-    }
-    LOG(INFO, "[Hub] Starting TCP/IP listener on port %d", hubPort_);
     // TODO: find a better solution for this that does not require a cast and
     // will work with the TCP stack.
     openlcb::SimpleCanStackBase *canStack =
         static_cast<openlcb::SimpleCanStackBase *>(stack_);
-    hub_.reset(new GcTcpHub(canStack->can_hub(), hubPort_));
+
+    if (!enableHub_ || canStack->get_tcp_hub_server())
+    {
+        return;
+    }
+    LOG(INFO, "[Hub] Starting TCP/IP listener on port %d", hubPort_);
+    canStack->start_tcp_hub_server(hubPort_);
 
     // wait for the hub to complete it's startup tasks
-    while (!hub_->is_started())
+    while (!canStack->get_tcp_hub_server()->is_started())
     {
         usleep(HUB_STARTUP_DELAY_USEC);
     }
@@ -932,14 +936,14 @@ void Esp32WiFiManager::start_ssid_scan(Notifiable *n)
 // Returns the number of SSIDs found in the last scan.
 size_t Esp32WiFiManager::get_ssid_scan_result_count()
 {
-    OSMutexLock l(&ssidScanResultsLock_);
+    const std::lock_guard<std::mutex> lock(ssidScanResultsLock_);
     return ssidScanResults_.size();
 }
 
 // Returns one SSID record from the last scan.
 wifi_ap_record_t Esp32WiFiManager::get_ssid_scan_result(size_t index)
 {
-    OSMutexLock l(&ssidScanResultsLock_);
+    const std::lock_guard<std::mutex> lock(ssidScanResultsLock_);
     wifi_ap_record_t record = wifi_ap_record_t();
     if (index < ssidScanResults_.size())
     {
@@ -951,7 +955,7 @@ wifi_ap_record_t Esp32WiFiManager::get_ssid_scan_result(size_t index)
 // Clears all cached SSID scan results.
 void Esp32WiFiManager::clear_ssid_scan_results()
 {
-    OSMutexLock l(&ssidScanResultsLock_);
+    const std::lock_guard<std::mutex> lock(ssidScanResultsLock_);
     ssidScanResults_.clear();
 }
 
@@ -962,7 +966,7 @@ void Esp32WiFiManager::clear_ssid_scan_results()
 void Esp32WiFiManager::mdns_publish(string service, const uint16_t port)
 {
     {
-        OSMutexLock l(&mdnsInitLock_);
+        const std::lock_guard<std::mutex> lock(mdnsInitLock_);
         if (!mdnsInitialized_)
         {
             // since mDNS has not been initialized, store this publish until
@@ -1012,7 +1016,7 @@ void Esp32WiFiManager::mdns_publish(string service, const uint16_t port)
 void Esp32WiFiManager::mdns_unpublish(string service)
 {
     {
-        OSMutexLock l(&mdnsInitLock_);
+        const std::lock_guard<std::mutex> lock(mdnsInitLock_);
         if (!mdnsInitialized_)
         {
             // Since mDNS is not in an initialized state we can discard the
@@ -1038,7 +1042,7 @@ void Esp32WiFiManager::start_mdns_system()
 {
     // Initialize the mDNS system if it has not already been started.
     {
-        OSMutexLock l(&mdnsInitLock_);
+        const std::lock_guard<std::mutex> lock(mdnsInitLock_);
         // If we have already initialized mDNS we can exit early.
         if (mdnsInitialized_)
         {
@@ -1182,7 +1186,7 @@ void Esp32WiFiManager::on_station_started()
 
     // Schedule callbacks via the executor rather than call directly here.
     {
-        OSMutexLock l(&networkCallbacksLock_);
+        const std::lock_guard<std::mutex> lock(networkCallbacksLock_);
         for (esp32_network_init_callback_t cb : networkInitCallbacks_)
         {
             stack_->executor()->add(new CallbackExecutable([cb]
@@ -1241,7 +1245,7 @@ void Esp32WiFiManager::on_station_disconnected(uint8_t reason)
 
     // Schedule callbacks via the executor rather than call directly here.
     {
-        OSMutexLock l(&networkCallbacksLock_);
+        const std::lock_guard<std::mutex> lock(networkCallbacksLock_);
         for (esp32_network_init_callback_t cb : networkInitCallbacks_)
         {
             stack_->executor()->add(new CallbackExecutable([cb]
@@ -1271,7 +1275,7 @@ void Esp32WiFiManager::on_station_ip_assigned(uint32_t ip_address)
 
     // Schedule callbacks via the executor rather than call directly here.
     {
-        OSMutexLock l(&networkCallbacksLock_);
+        const std::lock_guard<std::mutex> lock(networkCallbacksLock_);
         for (esp32_network_up_callback_t cb : networkUpCallbacks_)
         {
             stack_->executor()->add(new CallbackExecutable([cb, ip_address]
@@ -1293,7 +1297,7 @@ void Esp32WiFiManager::on_station_ip_lost()
 
     // Schedule callbacks via the executor rather than call directly here.
     {
-        OSMutexLock l(&networkCallbacksLock_);
+        const std::lock_guard<std::mutex> lock(networkCallbacksLock_);
         for (esp32_network_down_callback_t cb : networkDownCallbacks_)
         {
             stack_->executor()->add(new CallbackExecutable([cb]
@@ -1474,7 +1478,7 @@ void Esp32WiFiManager::on_softap_start()
 
     // Schedule callbacks via the executor rather than call directly here.
     {
-        OSMutexLock l(&networkCallbacksLock_);
+        const std::lock_guard<std::mutex> lock(networkCallbacksLock_);
         for (esp32_network_up_callback_t cb : networkUpCallbacks_)
         {
             stack_->executor()->add(new CallbackExecutable([cb, ip_address]
@@ -1495,7 +1499,7 @@ void Esp32WiFiManager::on_softap_stop()
 
     // Schedule callbacks via the executor rather than call directly here.
     {
-        OSMutexLock l(&networkCallbacksLock_);
+        const std::lock_guard<std::mutex> lock(networkCallbacksLock_);
         for (esp32_network_down_callback_t cb : networkDownCallbacks_)
         {
             stack_->executor()->add(new CallbackExecutable([cb]
@@ -1521,7 +1525,7 @@ void Esp32WiFiManager::on_softap_station_disconnected(wifi_event_ap_stadisconnec
 
 void Esp32WiFiManager::on_wifi_scan_completed(wifi_event_sta_scan_done_t scan_info)
 {
-    OSMutexLock l(&ssidScanResultsLock_);
+    const std::lock_guard<std::mutex> lock(ssidScanResultsLock_);
     if (scan_info.status)
     {
         LOG_ERROR("[WiFi] SSID scan failed!");

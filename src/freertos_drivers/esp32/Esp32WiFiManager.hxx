@@ -50,6 +50,7 @@
 #include <freertos/event_groups.h>
 #include <esp_event.h>
 #include <esp_wifi_types.h>
+#include <mutex>
 
 namespace openmrn_arduino
 {
@@ -467,9 +468,6 @@ private:
     /// If true the esp32 will create and advertise itself as a hub.
     bool enableHub_;
 
-    /// @ref GcTcpHub for this node's hub if enabled.
-    std::unique_ptr<GcTcpHub> hub_;
-
     /// mDNS service name being advertised by the hub, if enabled.
     std::string hubServiceName_;
 
@@ -486,13 +484,13 @@ private:
     std::vector<wifi_ap_record_t> ssidScanResults_;
 
     /// Protects ssidScanResults_ vector.
-    OSMutex ssidScanResultsLock_;
+    std::mutex ssidScanResultsLock_;
 
     /// Notifiable to be called when SSID scan completes.
     Notifiable *ssidCompleteNotifiable_{nullptr};
 
     /// Protects the mdnsInitialized_ flag and mdnsDeferredPublish_ map.
-    OSMutex mdnsInitLock_;
+    std::mutex mdnsInitLock_;
 
     /// Internal flag for tracking that the mDNS system has been initialized.
     bool mdnsInitialized_{false};
@@ -503,7 +501,7 @@ private:
 
     /// Protects the networkUpCallbacks_, networkDownCallbacks_ and
     /// networkInitCallbacks_ vectors.
-    OSMutex networkCallbacksLock_;
+    std::mutex networkCallbacksLock_;
 
     /// Holder for callbacks to invoke when the WiFi connection is up.
     std::vector<esp32_network_up_callback_t> networkUpCallbacks_;
