@@ -162,6 +162,7 @@ Esp32WiFiManager::Esp32WiFiManager(const char *ssid
                                  , ip_addr_t primary_dns_server
                                  , uint8_t soft_ap_channel
                                  , wifi_auth_mode_t soft_ap_auth
+                                 , const char *soft_ap_name
                                  , const char *soft_ap_password
                                  , ESP32_ADAPTER_IP_INFO_TYPE *softap_static_ip)
     : DefaultConfigUpdateListener()
@@ -175,6 +176,7 @@ Esp32WiFiManager::Esp32WiFiManager(const char *ssid
     , primaryDNSAddress_(primary_dns_server)
     , softAPChannel_(soft_ap_channel)
     , softAPAuthMode_(soft_ap_auth)
+    , softAPName_(soft_ap_name ? soft_ap_name : "")
     , softAPPassword_(soft_ap_password ? soft_ap_password : password)
     , softAPStaticIP_(softap_static_ip)
 {
@@ -201,6 +203,11 @@ Esp32WiFiManager::Esp32WiFiManager(const char *ssid
 
     // Release any extra capacity allocated for the hostname.
     hostname_.shrink_to_fit();
+
+    if (softAPName_.empty())
+    {
+        softAPName_ = hostname_;
+    }
 }
 
 
@@ -610,18 +617,56 @@ void Esp32WiFiManager::start_wifi_system()
         {
             // Configure the SSID for the Soft AP based on the SSID passed to
             // the Esp32WiFiManager constructor.
-            strcpy(reinterpret_cast<char *>(conf.ap.ssid), ssid_);
+            strcpy(reinterpret_cast<char *>(conf.ap.ssid), ssid_.c_str());
+            if (softAPAuthMode_ != WIFI_AUTH_OPEN)
+            {
+                strcpy(reinterpret_cast<char *>(conf.ap.password),
+                       password_.c_str());
+            }
+            else
+            {
+                LOG(WARNING,
+                    "[WiFi] SoftAP password is blank, using OPEN auth mode.");
+                softAPAuthMode_ = WIFI_AUTH_OPEN;
+            }
         }
         else
         {
-            // Configure the SSID for the Soft AP based on the generated
-            // hostname when operating in WIFI_MODE_APSTA mode.
-            strcpy(reinterpret_cast<char *>(conf.ap.ssid), hostname_.c_str());
-        }
-        
-        if (password_ && softAPAuthMode_ != WIFI_AUTH_OPEN)
-        {
-            strcpy(reinterpret_cast<char *>(conf.ap.password), password_);
+            if (!softAPName_.empty())
+            {
+                // Configure the SSID for the Soft AP based on the SSID passed
+                // to the Esp32WiFiManager constructor.
+                strcpy(reinterpret_cast<char *>(conf.ap.ssid),
+                       softAPName_.c_str());
+            }
+            else
+            {
+                // Configure the SSID for the Soft AP based on the generated
+                // hostname when operating in WIFI_MODE_APSTA mode.
+                strcpy(reinterpret_cast<char *>(conf.ap.ssid),
+                       hostname_.c_str());
+            }
+            if (softAPAuthMode_ != WIFI_AUTH_OPEN)
+            {
+                if (softAPPassword_.empty())
+                {
+                    strcpy(reinterpret_cast<char *>(conf.ap.password),
+                       softAPPassword_.c_str());
+                }
+                else if (!password_.empty())
+                {
+                    strcpy(reinterpret_cast<char *>(conf.ap.password),
+                       password_.c_str());
+                }
+                else
+                {
+                    LOG(WARNING,
+                        "[WiFi] SoftAP password is blank, using OPEN auth "
+                        "mode.");
+                    softAPAuthMode_ = WIFI_AUTH_OPEN;
+                }
+
+            }
         }
 
         LOG(INFO, "[WiFi] Configuring SoftAP (SSID: %s)", conf.ap.ssid);
@@ -635,10 +680,11 @@ void Esp32WiFiManager::start_wifi_system()
         // password provided to the Esp32WiFiManager constructor.
         wifi_config_t conf;
         bzero(&conf, sizeof(wifi_config_t));
-        strcpy(reinterpret_cast<char *>(conf.sta.ssid), ssid_);
-        if (password_)
+        strcpy(reinterpret_cast<char *>(conf.sta.ssid), ssid_.c_str());
+        if (!password_.empty())
         {
-            strcpy(reinterpret_cast<char *>(conf.sta.password), password_);
+            strcpy(reinterpret_cast<char *>(conf.sta.password),
+                   password_.c_str());
         }
 
         LOG(INFO, "[WiFi] Configuring Station (SSID: %s)", conf.sta.ssid);
@@ -698,7 +744,7 @@ void Esp32WiFiManager::start_wifi_system()
         // Check if we successfully connected or not. If not, force a reboot.
         if ((bits & WIFI_CONNECTED_BIT) != WIFI_CONNECTED_BIT)
         {
-            LOG(FATAL, "[WiFi] Failed to connect to SSID: %s.", ssid_);
+            LOG(FATAL, "[WiFi] Failed to connect to SSID: %s.", ssid_.c_str());
         }
 
         // Check if we successfully connected or not. If not, force a reboot.
@@ -1180,7 +1226,8 @@ void Esp32WiFiManager::on_station_started()
     configure_wifi_max_tx_power();
 
     LOG(INFO,
-        "[WiFi] Station started, attempting to connect to SSID: %s.", ssid_);
+        "[WiFi] Station started, attempting to connect to SSID: %s.",
+        ssid_.c_str());
     // Start the SSID connection process.
     esp_wifi_connect();
 
@@ -1199,7 +1246,7 @@ void Esp32WiFiManager::on_station_started()
 
 void Esp32WiFiManager::on_station_connected()
 {
-    LOG(INFO, "[WiFi] Connected to SSID: %s", ssid_);
+    LOG(INFO, "[WiFi] Connected to SSID: %s", ssid_.c_str());
     // Set the flag that indictes we are connected to the SSID.
     xEventGroupSetBits(wifiStatusEventGroup_, WIFI_CONNECTED_BIT);
 }
@@ -1217,8 +1264,8 @@ void Esp32WiFiManager::on_station_disconnected(uint8_t reason)
         // track that we were connected previously.
         was_previously_connected = true;
 
-        LOG(INFO, "[WiFi] Lost connection to SSID: %s (reason:%d)", ssid_
-            , reason);
+        LOG(INFO, "[WiFi] Lost connection to SSID: %s (reason:%d)",
+            ssid_.c_str(), reason);
         // Clear the flag that indicates we are connected to the SSID.
         xEventGroupClearBits(wifiStatusEventGroup_, WIFI_CONNECTED_BIT);
         // Clear the flag that indicates we have an IPv4 address.
@@ -1233,13 +1280,14 @@ void Esp32WiFiManager::on_station_disconnected(uint8_t reason)
     // trigger the reconnection process at this point.
     if (was_previously_connected)
     {
-        LOG(INFO, "[WiFi] Attempting to reconnect to SSID: %s.", ssid_);
+        LOG(INFO, "[WiFi] Attempting to reconnect to SSID: %s.",
+            ssid_.c_str());
     }
     else
     {
         LOG(INFO,
             "[WiFi] Connection failed, reconnecting to SSID: %s (reason:%d).",
-            ssid_, reason);
+            ssid_.c_str(), reason);
     }
     esp_wifi_connect();
 

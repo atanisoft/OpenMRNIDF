@@ -119,11 +119,11 @@ public:
     /// started after the initial loading of the CDI which occurs only after
     /// the application code calls OpenMRN::begin().
     ///
-    /// @param ssid is the WiFi AP to connect to. Must stay alive forever.
+    /// @param ssid is the WiFi AP to connect to.
     /// @param password is the password for the WiFi AP being connected
-    /// to. Must stay alive forever.
-    /// @param stack is the SimpleStackBase for this node. Must stay alive
-    /// forever.
+    /// to.
+    /// @param stack is the SimpleStackBase for this node. NOTE: Must stay
+    /// alive forever.
     /// @param cfg is the WiFiConfiguration instance used for this node. This
     /// will be monitored for changes and the WiFi behavior altered
     /// accordingly.
@@ -146,9 +146,12 @@ public:
     /// @param soft_ap_channel is the WiFi channel to use for the SoftAP.
     /// @param soft_ap_auth is the authentication mode for the AP when
     /// wifi_mode is set to WIFI_MODE_AP or WIFI_MODE_APSTA.
+    /// @param soft_ap_name will be used as the name for the SoftAP. If null
+    /// the hostname will be used as the SoftAP name. This is only applicable
+    /// when @param wifi_mode is WIFI_MODE_APSTA.
     /// @param soft_ap_password will be used as the password for the SoftAP,
     /// if null and soft_ap_auth is not WIFI_AUTH_OPEN password will be used.
-    /// If provided, this must stay alive forever.
+    /// NOTE: This is only applicable when @param wifi_mode is WIFI_MODE_APSTA.
     /// @param softap_static_ip is the static IP configuration for the SoftAP,
     /// when not specified the SoftAP will have an IP address of 192.168.4.1.
     ///
@@ -164,6 +167,7 @@ public:
                    , ip_addr_t primary_dns_server = ip_addr_any
                    , uint8_t soft_ap_channel = 1
                    , wifi_auth_mode_t soft_ap_auth = WIFI_AUTH_OPEN
+                   , const char *soft_ap_name = nullptr
                    , const char *soft_ap_password = nullptr
                    , ESP32_ADAPTER_IP_INFO_TYPE *softap_static_ip = nullptr
     );
@@ -393,10 +397,10 @@ private:
     std::string hostname_;
 
     /// User provided SSID to connect to.
-    const char *ssid_;
+    std::string ssid_;
 
     /// User provided password for the SSID to connect to.
-    const char *password_;
+    std::string password_;
 
     /// Persistent configuration that will be used for this node's WiFi usage.
     const WiFiConfiguration cfg_;
@@ -420,9 +424,15 @@ private:
     /// @ref softAPPassword_ will be used.
     wifi_auth_mode_t softAPAuthMode_{WIFI_AUTH_OPEN};
 
+    /// User provided name for the SoftAP when active, defaults to
+    /// @ref hostname_ when null.
+    /// NOTE: Only used when @ref wifiMode_ is set to WIFI_MODE_AP.
+    std::string softAPName_;
+
     /// User provided password for the SoftAP when active, defaults to
     /// @ref password when null and softAPAuthMode_ is not WIFI_AUTH_OPEN.
-    const char *softAPPassword_;
+    /// NOTE: Only used when @ref wifiMode_ is set to WIFI_MODE_AP.
+    std::string softAPPassword_;
 
     /// Static IP Address configuration for the SoftAP.
     /// Default static IP provided by ESP-IDF is 192.168.4.1.
