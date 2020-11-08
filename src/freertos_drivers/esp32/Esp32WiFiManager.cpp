@@ -195,10 +195,11 @@ Esp32WiFiManager::Esp32WiFiManager(const char *ssid
     // https://github.com/espressif/esp-idf/blob/master/components/tcpip_adapter/include/tcpip_adapter.h#L611
     if (hostname_.length() > ESP32_MAX_HOSTNAME_LENGTH)
     {
-        LOG(WARNING, "ESP32 hostname is too long, original hostname: %s",
+        LOG(WARNING,
+            "[WiFi] ESP32 hostname is too long, original hostname: %s",
             hostname_.c_str());
         hostname_.resize(ESP32_MAX_HOSTNAME_LENGTH);
-        LOG(WARNING, "truncated hostname: %s", hostname_.c_str());
+        LOG(WARNING, "[WiFi] truncated hostname: %s", hostname_.c_str());
     }
 
     // Release any extra capacity allocated for the hostname.
@@ -248,12 +249,12 @@ ConfigUpdateListener::UpdateAction Esp32WiFiManager::apply_configuration(
     int fd, bool initial_load, BarrierNotifiable *done)
 {
     AutoNotify n(done);
-    LOG(VERBOSE, "Esp32WiFiManager::apply_configuration(%d, %d)", fd,
+    LOG(VERBOSE, "[WiFi] apply_configuration(%d, %d)", fd,
         initial_load);
     initialConfigLoad_ = initial_load;
 
-    bool enableRadioSleep = CDI_READ_TRIM_DEFAULT(cfg_.sleep, fd);
-    int8_t wifiTXPower = CDI_READ_TRIM_DEFAULT(cfg_.tx_power, fd);
+    bool enableRadioSleep = CDI_READ_TRIMMED(cfg_.sleep, fd);
+    int8_t wifiTXPower = CDI_READ_TRIMMED(cfg_.tx_power, fd);
     if (enableRadioSleep != enableRadioSleep_ || wifiTXPower != wifiTXPower_)
     {
         configReloadRequested_ = true;
@@ -292,9 +293,9 @@ ConfigUpdateListener::UpdateAction Esp32WiFiManager::apply_configuration(
     hubServiceName_ = cfg_.hub().service_name().read(fd);
     hubPort_ = CDI_READ_TRIM_DEFAULT(cfg_.hub().port, fd);
 
-    LOG(VERBOSE,
-        "Esp32WiFiManager: uplink:%s (auto:%s, manual:%s:%d) tx:%d sleep:%s "
-        "hub:%s (%s:%d)",
+    LOG(INFO,
+        "[WiFi] Loaded config: uplink:%s (auto:%s, manual:%s:%d) tx:%d "
+        "modem-sleep:%s hub:%s (%s:%d)",
         enableUplink_ ? "Yes" : "No", uplinkAutoService_.c_str(),
         uplinkManualHost_.c_str(), uplinkManualPort_, wifiTXPower_,
         enableRadioSleep_  ? "Yes" : "No", enableHub_ ? "Yes" : "No",
@@ -324,7 +325,7 @@ ConfigUpdateListener::UpdateAction Esp32WiFiManager::apply_configuration(
 // Factory reset handler for the WiFiConfiguration CDI entry.
 void Esp32WiFiManager::factory_reset(int fd)
 {
-    LOG(VERBOSE, "Esp32WiFiManager::factory_reset(%d)", fd);
+    LOG(VERBOSE, "[WiFi] factory_reset(%d)", fd);
 
     // General WiFi configuration settings.
     CDI_FACTORY_RESET(cfg_.sleep);
@@ -353,8 +354,8 @@ void Esp32WiFiManager::process_idf_event(void *arg, esp_event_base_t event_base
                                        , int32_t event_id, void *event_data)
 {
     Esp32WiFiManager *wifi = Singleton<Esp32WiFiManager>::instance();
-    LOG(VERBOSE, "Esp32WiFiManager::process_idf_event(%s, %d, %p)", event_base
-      , event_id, event_data);
+    LOG(VERBOSE, "[WiFi] process_idf_event(%s, %d, %p)", event_base,
+        event_id, event_data);
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START &&
         (wifi->wifiMode_ == WIFI_MODE_APSTA ||
          wifi->wifiMode_ == WIFI_MODE_STA))
@@ -412,7 +413,7 @@ void Esp32WiFiManager::process_idf_event(void *arg, esp_event_base_t event_base
 esp_err_t Esp32WiFiManager::process_wifi_event(void *ctx, system_event_t *event)
 {
     Esp32WiFiManager *wifi = Singleton<Esp32WiFiManager>::instance();
-    LOG(VERBOSE, "Esp32WiFiManager::process_wifi_event(%d)", event->event_id);
+    LOG(VERBOSE, "[WiFi] process_wifi_event(%d)", event->event_id);
 
     // We only are interested in this event if we are managing the
     // WiFi and MDNS systems and our mode includes STATION.
@@ -537,8 +538,8 @@ void Esp32WiFiManager::start_wifi_system()
     // exists.
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE)
     {
-        LOG(FATAL, "[WiFi] Failed to initialize the default event loop: %s"
-          , esp_err_to_name(err));
+        LOG(FATAL, "[WiFi] Failed to initialize the default event loop: %s",
+            esp_err_to_name(err));
     }
 
     esp_netifs[ESP_IF_WIFI_STA] = esp_netif_create_default_wifi_sta();
@@ -555,7 +556,8 @@ void Esp32WiFiManager::start_wifi_system()
     tcpip_adapter_init();
 
     // Install event loop handler.
-    ESP_ERROR_CHECK(esp_event_loop_init(&Esp32WiFiManager::process_wifi_event, nullptr));
+    ESP_ERROR_CHECK(
+        esp_event_loop_init(&Esp32WiFiManager::process_wifi_event, nullptr));
 
 #endif // ESP-IDF v4.1+
 
@@ -648,15 +650,15 @@ void Esp32WiFiManager::start_wifi_system()
             }
             if (softAPAuthMode_ != WIFI_AUTH_OPEN)
             {
-                if (softAPPassword_.empty())
+                if (!softAPPassword_.empty())
                 {
                     strcpy(reinterpret_cast<char *>(conf.ap.password),
-                       softAPPassword_.c_str());
+                           softAPPassword_.c_str());
                 }
                 else if (!password_.empty())
                 {
                     strcpy(reinterpret_cast<char *>(conf.ap.password),
-                       password_.c_str());
+                           password_.c_str());
                 }
                 else
                 {
@@ -670,6 +672,7 @@ void Esp32WiFiManager::start_wifi_system()
         }
 
         LOG(INFO, "[WiFi] Configuring SoftAP (SSID: %s)", conf.ap.ssid);
+        //LOG(VERBOSE, "[WiFi] SoftAP PW: %s", conf.ap.password);
         ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_AP, &conf));
     }
 
@@ -713,7 +716,7 @@ void Esp32WiFiManager::start_wifi_system()
             // address.
             if (bits & WIFI_CONNECTED_BIT)
             {
-                LOG(INFO, "[IPv4] [%d/%d] Waiting for IP address assignment.",
+                LOG(INFO, "[WiFi] [%d/%d] Waiting for IP address assignment.",
                     attempt, MAX_CONNECTION_CHECK_ATTEMPTS);
             }
             else
