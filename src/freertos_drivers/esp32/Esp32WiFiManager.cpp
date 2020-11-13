@@ -251,51 +251,19 @@ ConfigUpdateListener::UpdateAction Esp32WiFiManager::apply_configuration(
     AutoNotify n(done);
     LOG(VERBOSE, "[WiFi] apply_configuration(%d, %d)", fd,
         initial_load);
-    initialConfigLoad_ = initial_load;
 
-    bool enableRadioSleep = CDI_READ_TRIMMED(cfg_.sleep, fd);
-    int8_t wifiTXPower = CDI_READ_TRIMMED(cfg_.tx_power, fd);
-    if (enableRadioSleep != enableRadioSleep_ || wifiTXPower != wifiTXPower_)
-    {
-        configReloadRequested_ = true;
-    }
-    enableRadioSleep_ = enableRadioSleep;
-    wifiTXPower_ = wifiTXPower;
-
-    // if uplink is enabled load the config related to uplink and check if it
-    // has changed.
-    if (CDI_READ_TRIM_DEFAULT(cfg_.uplink().enable, fd))
-    {
-        configReloadRequested_ = !enableUplink_;
-        enableUplink_ = true;
-    }
-    else if (enableUplink_)
-    {
-        enableUplink_ = false;
-        configReloadRequested_ = true;
-    }
+    enableRadioSleep_ = CDI_READ_TRIMMED(cfg_.sleep, fd);
+    wifiTXPower_ = CDI_READ_TRIMMED(cfg_.tx_power, fd);
+    enableUplink_ = CDI_READ_TRIM_DEFAULT(cfg_.uplink().enable, fd);
     uplinkManualHost_ = cfg_.uplink().manual().ip_address().read(fd);
     uplinkManualPort_ = CDI_READ_TRIM_DEFAULT(cfg_.uplink().manual().port, fd);
     uplinkAutoService_ = cfg_.uplink().automatic().service_name().read(fd);
-
-    // if hub is enabled load the config related to uplink and check if it has
-    // changed.
-    if (CDI_READ_TRIM_DEFAULT(cfg_.hub().enable, fd))
-    {
-        configReloadRequested_ = !enableHub_;
-        enableHub_ = true;
-    }
-    else if (enableHub_)
-    {
-        enableHub_ = false;
-        configReloadRequested_ = true;
-    }
+    enableHub_ = CDI_READ_TRIM_DEFAULT(cfg_.hub().enable, fd);
     hubServiceName_ = cfg_.hub().service_name().read(fd);
     hubPort_ = CDI_READ_TRIM_DEFAULT(cfg_.hub().port, fd);
 
     LOG(INFO,
-        "[WiFi] Loaded config: uplink:%s (auto:%s, manual:%s:%d) tx:%d "
-        "modem-sleep:%s hub:%s (%s:%d)",
+        "[WiFi] uplink:%s (auto:%s,manual:%s:%d) tx:%d sleep:%s hub:%s (%s:%d)",
         enableUplink_ ? "Yes" : "No", uplinkAutoService_.c_str(),
         uplinkManualHost_.c_str(), uplinkManualPort_, wifiTXPower_,
         enableRadioSleep_  ? "Yes" : "No", enableHub_ ? "Yes" : "No",
@@ -306,15 +274,34 @@ ConfigUpdateListener::UpdateAction Esp32WiFiManager::apply_configuration(
     if (initial_load)
     {
         // This is the initial loading of the CDI entry, start the background
-        // task that will manage the node's WiFi connection(s).
+        // task which starts and configures the WiFi stack. This will also
+        // configure the TX power and Sleep mode after configuring the Station
+        // or SoftAP settings.
         start_wifi_task();
     }
-    else if (configReloadRequested_)
+    else
     {
-        // If a configuration change has been detected, wake up the
-        // wifi_manager_task so it can consume the change prior to the next
-        // wake up interval.
-        xTaskNotifyGive(wifiTaskHandle_);
+        // Since the WiFi stack is already running we can reconfigure it now.
+        reconfigure_wifi_max_tx_power();
+        reconfigure_wifi_radio_sleep();
+
+        if (enableUplink_)
+        {
+            start_uplink();
+        }
+        else
+        {
+            stop_uplink();
+        }
+        
+        if (enableHub_)
+        {
+            start_hub();
+        }
+        else
+        {
+            stop_hub();
+        }
     }
 
     // Inform the caller that the configuration has been updated as the wifi
@@ -568,20 +555,44 @@ void Esp32WiFiManager::start_wifi_system()
     // Disable NVS storage for the WiFi driver
     cfg.nvs_enable = false;
 
-    // override the defaults coming from arduino-esp32, the ones below improve
-    // throughput and stability of TCP/IP, for more info on these values, see:
-    // https://github.com/espressif/arduino-esp32/issues/2899 and
-    // https://github.com/espressif/arduino-esp32/pull/2912
+    // Adjust the WiFi driver configuration to improve throughput and stability
+    // of TCP/IP.
     //
-    // Note: these numbers are slightly higher to allow compatibility with the
+    // - static_rx_buf_num is the number of pre-allocated buffers to create.
+    //   a value of at least 16 has been found to be reasonable.
+    // - dynamic_rx_buf_num is how many buffers will be created as data is
+    //   received, a value of at least 64 has been found to be needed when
+    //   the esp32 is under some load to minimize dropped packets.
+    // - dynamic_tx_buf_num is how many buffers will be created as data is
+    //   queued for transmit, a value of at least 64 has been found to be
+    //   needed when the esp32 is under some load to minimize dropped packets.
+    // - rx_ba_win is the WiFi Block Ack RX window, a value of 16 has been
+    //   found to be most stable.
+    //
+    // NOTE: These numbers are slightly higher to allow compatibility with the
     // WROVER chip and WROOM-32 chip. The increase results in ~2kb less heap
     // at runtime.
     //
-    // These do not require recompilation of arduino-esp32 code as these are
-    // used in the WIFI_INIT_CONFIG_DEFAULT macro, they simply need to be redefined.
-    cfg.static_rx_buf_num = 16;
-    cfg.dynamic_rx_buf_num = 32;
-    cfg.rx_ba_win = 16;
+    // History:
+    // - https://github.com/espressif/arduino-esp32/issues/2899 and
+    // - https://github.com/espressif/arduino-esp32/pull/2912
+
+    if (cfg.static_rx_buf_num < 16)
+    {
+        cfg.static_rx_buf_num = 16;
+    }
+    if (cfg.dynamic_rx_buf_num < 64)
+    {
+        cfg.dynamic_rx_buf_num = 64;
+    }
+    if (cfg.dynamic_tx_buf_num < 64)
+    {
+        cfg.dynamic_tx_buf_num = 64;
+    }
+    if (cfg.rx_ba_win < 16)
+    {
+        cfg.rx_ba_win = 16;
+    }
 
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
@@ -776,81 +787,14 @@ void *Esp32WiFiManager::wifi_manager_task(void *param)
     // Start the WiFi system before proceeding with remaining tasks.
     wifi->start_wifi_system();
 
-    while (!wifi->shutdownRequested_)
-    {
-        EventBits_t bits = xEventGroupGetBits(wifi->wifiStatusEventGroup_);
-        if (bits & WIFI_GOTIP_BIT)
-        {
-            // If we do not have not an uplink connection force a config reload
-            // to start the connection process.
-            if (!wifi->uplink_)
-            {
-                wifi->configReloadRequested_ = true;
-            }
-        }
-        else
-        {
-            // Since we do not have an IP address we need to shutdown any
-            // active connections since they will be invalid until a new IP
-            // has been provisioned.
-            wifi->stop_hub();
-            wifi->stop_uplink();
+    // Reconfigure the TX power and radio sleep mode now that the WiFi stack is
+    // running.
+    wifi->reconfigure_wifi_max_tx_power();
+    wifi->reconfigure_wifi_radio_sleep();
 
-            // Make sure we don't try and reload configuration since we can't
-            // create outbound connections at this time.
-            wifi->configReloadRequested_ = false;
-        }
-
-        if (wifi->shutdownRequested_)
-        {
-            LOG(INFO, "[WiFi] Shutdown requested, stopping background thread.");
-            break;
-        }
-
-        // Check if there are configuration changes to pick up.
-        if (wifi->configReloadRequested_ || wifi->initialConfigLoad_)
-        {
-            // Since we are loading configuration data, shutdown the hub and
-            // uplink if created previously.
-            wifi->stop_hub();
-            wifi->stop_uplink();
-
-            if (wifi->enableRadioSleep_)
-            {
-                // When sleep is enabled this will trigger the WiFi system to
-                // only wake up every DTIM period to receive beacon updates.
-                // no data loss is expected for this setting but it does delay
-                // receiption until the DTIM period.
-                ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
-            }
-            else
-            {
-                // When sleep is disabled the WiFi radio will always be active.
-                // This will increase power consumption of the ESP32 but it
-                // will result in a more reliable behavior when the ESP32 is
-                // connected to an always-on power supply (ie: not a battery).
-                ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
-            }
-
-            // If this is not the initial loading of the configuration, set the
-            // maximum transmit power. Otherwise it will be handled as part of
-            // the initial configuration of the Station or SoftAP interface.
-            if (!wifi->initialConfigLoad_)
-            {
-                wifi->configure_wifi_max_tx_power();
-            }
-
-            wifi->start_uplink();
-            wifi->start_hub();
-
-            wifi->configReloadRequested_ = false;
-            wifi->initialConfigLoad_ = false;
-        }
-
-        // Sleep until we are woken up again for configuration update or WiFi
-        // event.
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    }
+    // put our task to sleep until we are woken up for shutdown.
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    LOG(INFO, "[WiFi] Shutdown requested, stopping background thread.");
 
     // Stop the hub and uplink (if they are active)
     wifi->stop_hub();
@@ -1025,40 +969,39 @@ void Esp32WiFiManager::mdns_publish(string service, const uint16_t port)
         }
     }
 
-    // Schedule the publish to be done through the Executor since we may need
-    // to retry it.
-    stack_->executor()->add(new CallbackExecutable([service, port]()
+    string service_name = service;
+    string protocol_name;
+    split_mdns_service_name(&service_name, &protocol_name);
+    // try to unpublish before we publish just in case we have previously
+    // published it.
+    mdns_service_remove(service_name.c_str(), protocol_name.c_str());
+    esp_err_t res = mdns_service_add(
+        NULL, service_name.c_str(), protocol_name.c_str(), port, NULL, 0);
+    LOG(VERBOSE, "[mDNS] mdns_service_add(%s:%d): %s.", service.c_str(), port
+      , esp_err_to_name(res));
+    // ESP_FAIL will be triggered if there is a timeout during publish of
+    // the new mDNS entry. The mDNS task runs at a very low priority on the
+    // PRO_CPU which is also where the OpenMRN Executor runs from which can
+    // cause a race condition.
+    if (res == ESP_FAIL || res == ESP_ERR_INVALID_ARG)
     {
-        string service_name = service;
-        string protocol_name;
-        split_mdns_service_name(&service_name, &protocol_name);
-        esp_err_t res = mdns_service_add(
-            NULL, service_name.c_str(), protocol_name.c_str(), port, NULL, 0);
-        LOG(VERBOSE, "[mDNS] mdns_service_add(%s.%s:%d): %s."
-          , service_name.c_str(), protocol_name.c_str(), port
-          , esp_err_to_name(res));
-        // ESP_FAIL will be triggered if there is a timeout during publish of
-        // the new mDNS entry. The mDNS task runs at a very low priority on the
-        // PRO_CPU which is also where the OpenMRN Executor runs from which can
-        // cause a race condition.
-        if (res == ESP_FAIL)
+        // Schedule the publish to be done through the Executor since we may need
+        // to retry it.
+        stack_->executor()->add(new CallbackExecutable([service, port]()
         {
             // Send it back onto the scheduler to be retried
-            Singleton<Esp32WiFiManager>::instance()->mdns_publish(service
-                                                                , port);
-        }
-        else if (res != ESP_OK)
-        {
-            LOG_ERROR("[mDNS] Failed to advertise %s.%s:%d due to: %s (%d)"
-                    , service_name.c_str(), protocol_name.c_str(), port
-                    , esp_err_to_name(res), res);
-        }
-        else
-        {
-            LOG(INFO, "[mDNS] Advertising %s.%s:%d.", service_name.c_str()
-              , protocol_name.c_str(), port);
-        }
-    }));
+            Singleton<Esp32WiFiManager>::instance()->mdns_publish(service, port);
+        }));
+    }
+    else if (res != ESP_OK)
+    {
+        LOG_ERROR("[mDNS] Failed to advertise %s:%d due to: %s (%d)"
+                , service.c_str(), port, esp_err_to_name(res), res);
+    }
+    else
+    {
+        LOG(INFO, "[mDNS] Advertising %s:%d.", service.c_str(), port);
+    }
 }
 
 // Removes advertisement of a service from mDNS.
@@ -1122,7 +1065,7 @@ void Esp32WiFiManager::start_mdns_system()
     mdnsDeferredPublish_.clear();
 }
 
-void Esp32WiFiManager::configure_wifi_max_tx_power()
+void Esp32WiFiManager::reconfigure_wifi_max_tx_power()
 {
     int8_t current_power = 0;
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_get_max_tx_power(&current_power));
@@ -1131,6 +1074,31 @@ void Esp32WiFiManager::configure_wifi_max_tx_power()
         LOG(INFO, "[WiFi] Adjusting maximum WiFi TX power %d -> %d.",
             current_power, wifiTXPower_);
         ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_set_max_tx_power(wifiTXPower_));
+    }
+}
+
+void Esp32WiFiManager::reconfigure_wifi_radio_sleep()
+{
+    wifi_ps_type_t current_mode = WIFI_PS_NONE;
+    ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_get_ps(&current_mode));
+    
+    if (enableRadioSleep_ && current_mode != WIFI_PS_MIN_MODEM)
+    {
+        LOG(INFO, "[WiFi] Enabling radio power saving mode");
+        // When sleep is enabled this will trigger the WiFi system to
+        // only wake up every DTIM period to receive beacon updates.
+        // no data loss is expected for this setting but it does delay
+        // receiption until the DTIM period.
+        ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
+    }
+    else if (!enableRadioSleep_ && current_mode != WIFI_PS_NONE)
+    {
+        LOG(INFO, "[WiFi] Disabling radio power saving mode");
+        // When sleep is disabled the WiFi radio will always be active.
+        // This will increase power consumption of the ESP32 but it
+        // will result in a more reliable behavior when the ESP32 is
+        // connected to an always-on power supply (ie: not a battery).
+        ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     }
 }
 
@@ -1225,9 +1193,6 @@ void Esp32WiFiManager::on_station_started()
 #endif // IDF v4.1+
     }
 
-    // Set the maximum transmit power before we connect to the SSID.
-    configure_wifi_max_tx_power();
-
     LOG(INFO,
         "[WiFi] Station started, attempting to connect to SSID: %s.",
         ssid_.c_str());
@@ -1320,9 +1285,9 @@ void Esp32WiFiManager::on_station_ip_assigned(uint32_t ip_address)
     // Set the flag that indictes we have an IPv4 address.
     xEventGroupSetBits(wifiStatusEventGroup_, WIFI_GOTIP_BIT);
 
-    // Wake up the wifi_manager_task so it can start connections
-    // creating connections, this will be a no-op for initial startup.
-    xTaskNotifyGive(wifiTaskHandle_);
+    // Start the hub and uplink (if enabled/configured)
+    start_hub();
+    start_uplink();
 
     // Schedule callbacks via the executor rather than call directly here.
     {
@@ -1339,12 +1304,12 @@ void Esp32WiFiManager::on_station_ip_assigned(uint32_t ip_address)
 
 void Esp32WiFiManager::on_station_ip_lost()
 {
-    // Clear the flag that indicates we are connected and have an
-    // IPv4 address.
+    // Clear the flag that indicates we are connected and have an IPv4 address.
     xEventGroupClearBits(wifiStatusEventGroup_, WIFI_GOTIP_BIT);
 
-    // Wake up the wifi_manager_task so it can clean up connections.
-    xTaskNotifyGive(wifiTaskHandle_);
+    // Stop the hub and uplink (if enabled/running)
+    stop_hub();
+    stop_uplink();
 
     // Schedule callbacks via the executor rather than call directly here.
     {
@@ -1514,10 +1479,6 @@ void Esp32WiFiManager::on_softap_start()
 
     if (wifiMode_ == WIFI_MODE_AP)
     {
-        // Set the maximum transmit power. In the case of Station+SoftAP mode
-        // this will be set as part of the station startup.
-        configure_wifi_max_tx_power();
-
         // If we are operating in SoftAP mode only we can start mDNS and uplink
         // connection, otherwise defer it until the station has received it's
         // IP address to avoid reinitializing mDNS and uplink mDNS search or

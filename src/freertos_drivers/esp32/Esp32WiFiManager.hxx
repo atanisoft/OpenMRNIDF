@@ -338,8 +338,11 @@ private:
     /// Initializes the mDNS system if it hasn't already been initialized.
     void start_mdns_system();
 
-    /// Configures the WiFi maximum TX power.
-    void configure_wifi_max_tx_power();
+    /// Reconfigures the WiFi maximum TX power.
+    void reconfigure_wifi_max_tx_power();
+
+    /// Reconfigures the WiFi radio sleep mode.
+    void reconfigure_wifi_radio_sleep();
 
     /// Event handler called when the ESP32 Station interface has started.
     ///
@@ -437,12 +440,6 @@ private:
     /// Static IP Address configuration for the SoftAP.
     /// Default static IP provided by ESP-IDF is 192.168.4.1.
     ESP32_ADAPTER_IP_INFO_TYPE *softAPStaticIP_{nullptr};
-
-    /// Internal flag to request the wifi_manager_task reload configuration.
-    bool configReloadRequested_{true};
-
-    /// Internal flag used to indicate this is the first time startup.
-    bool initialConfigLoad_{true};
 
     /// Internal flag to request the wifi_manager_task to shutdown.
     bool shutdownRequested_{false};
