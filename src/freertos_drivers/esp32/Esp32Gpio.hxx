@@ -96,11 +96,16 @@ public:
     {
         if (INVERTED)
         {
-            new_state = !new_state;
+            LOG(VERBOSE, "Esp32Gpio(%d) write %s", PIN_NUM,
+                new_state == Value::SET ? "CLR" : "SET");
+            ESP_ERROR_CHECK(gpio_set_level(PIN_NUM, new_state == Value::CLR));
         }
-        LOG(VERBOSE, "Esp32Gpio(%d) write %s", PIN_NUM,
-            new_state == Value::SET ? "SET" : "CLR");
-        ESP_ERROR_CHECK(gpio_set_level(PIN_NUM, new_state));
+        else
+        {
+            LOG(VERBOSE, "Esp32Gpio(%d) write %s", PIN_NUM,
+                new_state == Value::SET ? "SET" : "CLR");
+            ESP_ERROR_CHECK(gpio_set_level(PIN_NUM, new_state));
+        }
     }
 
     /// Reads the current state of the connected GPIO pin.
