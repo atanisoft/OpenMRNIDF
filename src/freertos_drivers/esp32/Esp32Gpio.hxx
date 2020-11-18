@@ -58,7 +58,7 @@ template <class Defs, bool PUEN, bool PDEN> struct GpioInputPin;
 /// `SAFE_VALUE'.
 ///
 /// Do not use this class directly. Use @ref GPIO_PIN instead.
-template <gpio_num_t PIN_NUM>
+template <gpio_num_t PIN_NUM, bool INVERTED = false>
 class Esp32Gpio : public Gpio
 {
 public:
@@ -94,6 +94,10 @@ public:
     /// @param new_state State to set the GPIO pin to.
     void write(Value new_state) const override
     {
+        if (INVERTED)
+        {
+            new_state = !new_state;
+        }
         LOG(VERBOSE, "Esp32Gpio(%d) write %s", PIN_NUM,
             new_state == Value::SET ? "SET" : "CLR");
         ESP_ERROR_CHECK(gpio_set_level(PIN_NUM, new_state));
@@ -159,8 +163,8 @@ private:
 };
 
 /// Defines the linker symbol for the wrapped Gpio instance.
-template <gpio_num_t PIN_NUM>
-const Esp32Gpio<PIN_NUM> Esp32Gpio<PIN_NUM>::instance_;
+template <gpio_num_t PIN_NUM, bool INVERTED>
+const Esp32Gpio<PIN_NUM, INVERTED> Esp32Gpio<PIN_NUM, INVERTED>::instance_;
 
 /// Parametric GPIO output class.
 /// @param Defs is the GPIO pin's definition base class, supplied by the
@@ -227,7 +231,7 @@ public:
     /// @return static Gpio object instance that controls this output pin.
     static constexpr const Gpio *instance()
     {
-        return &Esp32Gpio<PIN_NUM>::instance_;
+        return &Esp32Gpio<PIN_NUM, INVERT>::instance_;
     }
 };
 
