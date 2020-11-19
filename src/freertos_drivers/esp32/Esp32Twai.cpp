@@ -56,7 +56,7 @@
 #include <esp_vfs.h>
 #include <esp_intr_alloc.h>
 #include <freertos/FreeRTOS.h>
-#include <freertos/timers.h>
+#include <freertos/queue.h>
 
 #include "can_frame.h"
 #include "can_ioctl.h"
@@ -79,9 +79,12 @@ static constexpr TickType_t STATUS_PRINT_INTERVAL = pdMS_TO_TICKS(10000);
 static constexpr size_t STATUS_TASK_STACK_SIZE = 2048;
 
 /// TWAI peripheral ISR flags.
-static constexpr int TWAI_ISR_FLAGS =
-    ESP_INTR_FLAG_LOWMED |  // ISR is written in C/C++ code.
-    ESP_INTR_FLAG_IRAM;     // ISR can be called with cache disabled.
+///
+/// Since the ISR is written in C/C++ code we can only specify the flag
+/// ESP_INTR_FLAG_LOWMED. We can optionally specify ESP_INTR_FLAG_IRAM but
+/// there are intermittent crashes when the ISR is in IRAM due to flash access
+/// (ie SPIFFS or LittleFS).
+static constexpr int TWAI_ISR_FLAGS = ESP_INTR_FLAG_LOWMED;
 
 // Starting in IDF v4.2 the CAN peripheral was renamed to TWAI.
 #if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,2,0)
@@ -127,11 +130,27 @@ static twai_hal_context_t twai_context;
 /// Handle for the TWAI ISR.
 static intr_handle_t twai_isr_handle;
 
-/// TWAI Pending TX Queue.
-static QueueHandle_t twai_tx_queue;
+/// TWAI TX queue handle.
+static QueueHandle_t twai_tx_queue_handle;
 
-/// TWAI Pending RX Queue.
-static QueueHandle_t twai_rx_queue;
+/// TWAI TX queue backing buffer allocated using only internal memory and 8-bit
+/// access mode.
+static void *twai_tx_queue_buf;
+
+/// TWAI TX queue for frames received that have not yet been received from the
+/// OpenMRN stack but have not yet been transmitted.
+static StaticQueue_t twai_tx_static_queue;
+
+/// TWAI RX queue handle.
+static QueueHandle_t twai_rx_queue_handle;
+
+/// TWAI RX queue backing buffer allocated using only internal memory and 8-bit
+/// access mode.
+static void *twai_rx_queue_buf;
+
+/// TWAI RX queue for frames received that have not yet been transfered to the
+/// OpenMRN stack.
+static StaticQueue_t twai_rx_static_queue;
 
 /// Number of frames that are pending transmission by the low-level TWAI
 /// driver.
@@ -181,7 +200,7 @@ static esp_vfs_select_sem_t twai_select_sem;
 
 /// Internal flag indicating that the VFS layer has called
 /// @ref vfs_start_select() and that @ref twai_select_sem should be used if/when
-/// there is a change in @ref twai_tx_queue or @ref twai_rx_queue.
+/// there is a change in @ref twai_tx_queue_handle or @ref twai_rx_queue_handle.
 static volatile uint32_t twai_select_pending;
 #endif // INCLUDE_VFS_SELECT_SUPPORT
 
@@ -190,7 +209,7 @@ static volatile uint32_t twai_select_pending;
 static SemaphoreHandle_t twai_ioctl_spinlock;
 
 /// @ref Notifable object used to wakeup when there is room for at least one
-/// frame in @ref twai_tx_queue.
+/// frame in @ref twai_tx_queue_handle.
 static Notifiable *twai_tx_notifiable = nullptr;
 
 /// @ref Notifable object used to wakeup when there is at least one frame
@@ -198,17 +217,17 @@ static Notifiable *twai_tx_notifiable = nullptr;
 static Notifiable *twai_rx_notifiable = nullptr;
 #endif // INCLUDE_VFS_IOCTL_SUPPORT
 
-/// Flushes all frames in @ref twai_tx_queue.
+/// Flushes all frames in @ref twai_tx_queue_handle.
 static inline void twai_flush_tx_queue()
 {
-    xQueueReset(twai_tx_queue);
+    xQueueReset(twai_tx_queue_handle);
     twai_tx_pending = 0;
 }
 
-/// Flushes all frames in @ref twai_rx_queue.
+/// Flushes all frames in @ref twai_rx_queue_handle.
 static inline void twai_flush_rx_queue()
 {
-    xQueueReset(twai_rx_queue);
+    xQueueReset(twai_rx_queue_handle);
     twai_rx_pending = 0;
 }
 
@@ -289,12 +308,12 @@ static ssize_t vfs_write(int fd, const void *buf, size_t size)
         tx_frame.data_length_code = data->can_dlc;
         memcpy(tx_frame.data, data->data, data->can_dlc);
         twai_hal_format_frame(&tx_frame, &hal_frame);
-        if (xQueueSend(twai_tx_queue, &hal_frame, 0) == pdTRUE)
+        if (xQueueSend(twai_tx_queue_handle, &hal_frame, 0) == pdTRUE)
         {
             twai_tx_pending++;
             if (twai_hal_check_state_flags(&twai_context, TWAI_HAL_STATE_FLAG_RUNNING) &&
                 !twai_hal_check_state_flags(&twai_context, TWAI_HAL_STATE_FLAG_TX_BUFF_OCCUPIED) &&
-                xQueueReceive(twai_tx_queue, &hal_frame, 0) == pdTRUE)
+                xQueueReceive(twai_tx_queue_handle, &hal_frame, 0) == pdTRUE)
             {
                 twai_hal_set_tx_buffer_and_transmit(&twai_context, &hal_frame);
             }
@@ -334,7 +353,7 @@ static ssize_t vfs_read(int fd, void *buf, size_t size)
     {
         twai_hal_frame_t hal_frame;
         memset(&hal_frame, 0, sizeof(twai_hal_frame_t));
-        if (xQueueReceive(twai_rx_queue, &hal_frame, 0) != pdTRUE)
+        if (xQueueReceive(twai_rx_queue_handle, &hal_frame, 0) != pdTRUE)
         {
             // no frames available to receive
             break;
@@ -475,7 +494,7 @@ static IRAM_ATTR void twai_isr(void *arg)
             {
                 twai_rx_discard_count++;
             }
-            else if (xQueueSendFromISR(twai_rx_queue, &frame, &wakeup) == pdTRUE)
+            else if (xQueueSendFromISR(twai_rx_queue_handle, &frame, &wakeup) == pdTRUE)
             {
                 twai_rx_pending++;
             }
@@ -499,7 +518,7 @@ static IRAM_ATTR void twai_isr(void *arg)
         }
 
         twai_hal_frame_t tx_frame;
-        if (xQueueReceiveFromISR(twai_tx_queue, &tx_frame, &wakeup) == pdTRUE)
+        if (xQueueReceiveFromISR(twai_tx_queue_handle, &tx_frame, &wakeup) == pdTRUE)
         {
             twai_hal_set_tx_buffer_and_transmit(&twai_context, &tx_frame);
         }
@@ -603,14 +622,29 @@ static inline void create_twai_buffers()
 {
     LOG(VERBOSE, "[TWAI] Creating TWAI TX queue: %d"
       , config_can_tx_buffer_size());
-    twai_tx_queue =
-        xQueueCreate(config_can_tx_buffer_size(), sizeof(twai_hal_frame_t));
-    HASSERT(twai_tx_queue != nullptr);
+    twai_tx_queue_buf =
+        heap_caps_calloc(config_can_tx_buffer_size(), sizeof(twai_hal_frame_t),
+                         MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    HASSERT(twai_tx_queue_buf != nullptr);
+    twai_tx_queue_handle =
+        xQueueCreateStatic(config_can_tx_buffer_size(),
+                           sizeof(twai_hal_frame_t),
+                           static_cast<uint8_t *>(twai_tx_queue_buf),
+                           &twai_tx_static_queue);
+    HASSERT(twai_tx_queue_handle != nullptr);
     LOG(VERBOSE, "[TWAI] Creating TWAI RX queue: %d"
       , config_can_rx_buffer_size());
-    twai_rx_queue =
-        xQueueCreate(config_can_rx_buffer_size(), sizeof(twai_hal_frame_t));
-    HASSERT(twai_rx_queue != nullptr);
+    twai_rx_queue_buf =
+        heap_caps_calloc(config_can_rx_buffer_size() * 2,
+                         sizeof(twai_hal_frame_t),
+                         MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    HASSERT(twai_tx_queue_buf != nullptr);
+    twai_rx_queue_handle =
+        xQueueCreateStatic(config_can_rx_buffer_size() * 2,
+                           sizeof(twai_hal_frame_t),
+                           static_cast<uint8_t *>(twai_rx_queue_buf),
+                           &twai_rx_static_queue);
+    HASSERT(twai_rx_queue_handle != nullptr);
 }
 
 static inline void initialize_twai()
@@ -652,8 +686,10 @@ Esp32Twai::~Esp32Twai()
         twai_hal_deinit(&twai_context);
         twai_is_configured = false;
         xTaskNotifyGive(status_thread_handle);
-        vQueueDelete(twai_tx_queue);
-        vQueueDelete(twai_rx_queue);
+        vQueueDelete(twai_tx_queue_handle);
+        vQueueDelete(twai_rx_queue_handle);
+        heap_caps_free(twai_tx_queue_buf);
+        heap_caps_free(twai_rx_queue_buf);
     }
 }
 
