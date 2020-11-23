@@ -55,6 +55,8 @@
 #endif
 
 #ifdef ESP32
+#include <esp_vfs.h>
+
 #ifndef ESP_IDF_VERSION
 #define ESP_IDF_VERSION 0
 #endif
