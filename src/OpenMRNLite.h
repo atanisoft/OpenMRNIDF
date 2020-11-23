@@ -56,13 +56,14 @@
 
 // Include the ESP-IDF based GPIO support.
 #include "freertos_drivers/esp32/Esp32Gpio.hxx"
+#include "freertos_drivers/esp32/Esp32HardwareCanAdapter.hxx"
 #include "freertos_drivers/esp32/Esp32HardwareSerialAdapter.hxx"
 #include "freertos_drivers/esp32/Esp32Twai.hxx"
 #include "freertos_drivers/esp32/Esp32WiFiManager.hxx"
 
 // On the ESP32 we have persistent file system access so enable
 // dynamic CDI.xml generation support
-#define HAVE_FILESYSTEM
+#define HAVE_FILESYSTEM 1
 
 #else
 

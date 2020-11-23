@@ -34,37 +34,13 @@
  */
 
 #ifndef _FREERTOS_DRIVERS_ESP32_ESP32TWAI_HXX_
-
-// Target platform check via the sdkconfig.h file which is only present on the
-// ESP32 platform.
-#if defined __has_include
-#if __has_include("sdkconfig.h")
-#include "sdkconfig.h"
-#endif
-#endif // defined __has_include
+#define _FREERTOS_DRIVERS_ESP32_ESP32TWAI_HXX_
 
 // Only define the Esp32Twai interface if we are compiling for a supported
 // platform.
-#if defined(CONFIG_IDF_TARGET)
+#ifdef ESP32
 
 #include <driver/gpio.h>
-
-#if __has_include(<esp_idf_version.h>)
-#include <esp_idf_version.h>
-#else
-#include <esp_system.h>
-#endif
-
-// If we are using IDF 4.2+ we can leverage the TWAI HAL layer
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
-#define ESP32_TWAI_DRIVER_SUPPORTED 1
-#else
-#warning Unsupported IDF version
-#endif // IDF 4.0+
-
-#endif // CONFIG_IDF_TARGET
-
-#if ESP32_TWAI_DRIVER_SUPPORTED
 
 #include "utils/macros.h"
 
@@ -105,7 +81,9 @@ private:
 };
 
 } // namespace openmrn_arduino
+
 using openmrn_arduino::Esp32Twai;
-#endif
+
+#endif // ESP32
 
 #endif // _FREERTOS_DRIVERS_ESP32_ESP32TWAI_HXX_
