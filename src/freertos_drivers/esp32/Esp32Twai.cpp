@@ -46,21 +46,6 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
-#if __has_include(<esp_idf_version.h>)
-#include <esp_idf_version.h>
-#else
-#include <esp_system.h>
-
-#ifndef ESP_IDF_VERSION
-#define ESP_IDF_VERSION 0
-#endif
-
-#ifndef ESP_IDF_VERSION_VAL
-#define ESP_IDF_VERSION_VAL(a,b,c) 1
-#endif
-
-#endif
-
 #include "can_frame.h"
 #include "can_ioctl.h"
 #include "Esp32TwaiHal.hxx"
