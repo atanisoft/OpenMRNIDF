@@ -123,6 +123,12 @@ static pthread_once_t vfs_init_once = PTHREAD_ONCE_INIT;
 /// locked to any given calling thread.
 static pthread_key_t select_wakeup_key;
 
+/// This is the VFS FD that will be returned for ::open().
+///
+/// NOTE: The ESP VFS layer will ensure uniqueness and pass this FD back into
+/// all VFS APIs we implement.
+static constexpr int WAKEUP_VFS_FD = 0;
+
 /// This function is called by the ESP32's select implementation. It is passed
 /// in as a function pointer to the VFS API.
 /// @param nfds see standard select API
@@ -140,7 +146,13 @@ static esp_err_t esp_start_select(int nfds, fd_set *readfds, fd_set *writefds,
     HASSERT(parent);
     LOG(VERBOSE, "esp start select %p (thr %p parent %p)", signal_sem.sem
       , os_thread_self(), parent);
-    parent->esp_start_select(signal_sem);
+    if (nfds >= 1 &&
+        (FD_ISSET(WAKEUP_VFS_FD, readfds) ||
+         FD_ISSET(WAKEUP_VFS_FD, writefds) ||
+         FD_ISSET(WAKEUP_VFS_FD, exceptfds)))
+    {
+        parent->esp_start_select(signal_sem);
+    }
     return ESP_OK;
 }
 
@@ -180,7 +192,7 @@ void OSSelectWakeup::esp_end_select()
 static int esp_wakeup_open(const char * path, int flags, int mode)
 {
     // This virtual FS has only one fd, 0.
-    return 0;
+    return WAKEUP_VFS_FD;
 }
 
 /// This function will trigger the ESP32 to wake up from any pending select()

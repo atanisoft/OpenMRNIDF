@@ -377,13 +377,15 @@ static esp_err_t twai_vfs_start_select(int nfds, fd_set *readfds
 #endif
 )
 {
-    HASSERT(nfds >= 1);
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
-    *end_select_args = nullptr;
-#endif
-    twai_select_sem = sem;
-    twai_select_pending = 1;
-
+    // If our VFS FD is present in any of the FD sets we should process the
+    // select.
+    if (nfds >= 1 &&
+        (FD_ISSET(TWAI_VFS_FD, readfds) || FD_ISSET(TWAI_VFS_FD, writefds) ||
+         FD_ISSET(TWAI_VFS_FD, exceptfds)))
+    {
+        twai_select_sem = sem;
+        twai_select_pending = 1;
+    }
     return ESP_OK;
 }
 
