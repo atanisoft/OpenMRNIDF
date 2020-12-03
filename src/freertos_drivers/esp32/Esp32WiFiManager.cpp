@@ -561,10 +561,10 @@ void Esp32WiFiManager::start_wifi_system()
     // - static_rx_buf_num is the number of pre-allocated buffers to create.
     //   a value of at least 16 has been found to be reasonable.
     // - dynamic_rx_buf_num is how many buffers will be created as data is
-    //   received, a value of at least 64 has been found to be needed when
+    //   received, a value of at least 48 has been found to be needed when
     //   the esp32 is under some load to minimize dropped packets.
     // - dynamic_tx_buf_num is how many buffers will be created as data is
-    //   queued for transmit, a value of at least 64 has been found to be
+    //   queued for transmit, a value of at least 48 has been found to be
     //   needed when the esp32 is under some load to minimize dropped packets.
     // - rx_ba_win is the WiFi Block Ack RX window, a value of 16 has been
     //   found to be most stable.
@@ -581,13 +581,13 @@ void Esp32WiFiManager::start_wifi_system()
     {
         cfg.static_rx_buf_num = 16;
     }
-    if (cfg.dynamic_rx_buf_num < 64)
+    if (cfg.dynamic_rx_buf_num < 48)
     {
-        cfg.dynamic_rx_buf_num = 64;
+        cfg.dynamic_rx_buf_num = 48;
     }
-    if (cfg.dynamic_tx_buf_num < 64)
+    if (cfg.dynamic_tx_buf_num < 48)
     {
-        cfg.dynamic_tx_buf_num = 64;
+        cfg.dynamic_tx_buf_num = 48;
     }
     if (cfg.rx_ba_win < 16)
     {
