@@ -151,7 +151,7 @@ static esp_err_t esp_start_select(int nfds, fd_set *readfds, fd_set *writefds,
          FD_ISSET(WAKEUP_VFS_FD, writefds) ||
          FD_ISSET(WAKEUP_VFS_FD, exceptfds)))
     {
-        parent->esp_start_select(signal_sem);
+        parent->esp_start_select(signal_sem, readfds, writefds, exceptfds);
     }
     return ESP_OK;
 }
@@ -159,10 +159,17 @@ static esp_err_t esp_start_select(int nfds, fd_set *readfds, fd_set *writefds,
 /// This function is called by the ESP32's select implementation.
 /// @param signal_sem is the semaphore container provided by the VFS layer that
 /// can be used to wake up the select() call early.
-void OSSelectWakeup::esp_start_select(esp_vfs_select_sem_t signal_sem)
+void OSSelectWakeup::esp_start_select(esp_vfs_select_sem_t signal_sem,
+    fd_set *readfds, fd_set *writefds, fd_set *exceptfds)
 {
     AtomicHolder h(this);
     espSem_ = signal_sem;
+    readFds_ = readfds;
+    origReadFds_ = *readfds;
+    writeFds_ = writefds;
+    origWriteFds_ = *writefds;
+    exceptFds_ = exceptfds;
+    origExceptFds_ = *exceptfds;
     semValid_ = true;
 }
 
@@ -203,6 +210,18 @@ void OSSelectWakeup::esp_wakeup()
     if (semValid_)
     {
         LOG(VERBOSE, "wakeup es %p %u", espSem_.sem, *(unsigned*)espSem_.sem);
+        if (FD_ISSET(vfsFd_, &origReadFds_))
+        {
+            FD_SET(vfsFd_, readFds_);
+        }
+        if (FD_ISSET(vfsFd_, &origWriteFds_))
+        {
+            FD_SET(vfsFd_, writeFds_);
+        }
+        if (FD_ISSET(vfsFd_, &origExceptFds_))
+        {
+            FD_SET(vfsFd_, exceptFds_);
+        }
         esp_vfs_select_triggered(espSem_);
     }
 }
@@ -215,6 +234,18 @@ void OSSelectWakeup::esp_wakeup_from_isr()
     if (semValid_)
     {
         BaseType_t woken = pdFALSE;
+        if (FD_ISSET(vfsFd_, &origReadFds_))
+        {
+            FD_SET(vfsFd_, readFds_);
+        }
+        if (FD_ISSET(vfsFd_, &origWriteFds_))
+        {
+            FD_SET(vfsFd_, writeFds_);
+        }
+        if (FD_ISSET(vfsFd_, &origExceptFds_))
+        {
+            FD_SET(vfsFd_, exceptFds_);
+        }
         esp_vfs_select_triggered_isr(espSem_, &woken);
         if (woken == pdTRUE)
         {

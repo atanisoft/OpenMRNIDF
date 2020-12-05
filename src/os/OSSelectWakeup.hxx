@@ -193,7 +193,8 @@ private:
     void esp_wakeup();
     void esp_wakeup_from_isr();
 public:
-    void esp_start_select(esp_vfs_select_sem_t signal_sem);
+    void esp_start_select(esp_vfs_select_sem_t signal_sem, fd_set *readfds,
+        fd_set *writefds, fd_set *exceptfds);
     void esp_end_select();
 
 private:
@@ -207,6 +208,33 @@ private:
     /// Flag to indicate that @ref espSem_ is valid or not.
     /// Protected by Atomic *this.
     bool semValid_{false};
+
+    /// FD set provided by the ESP32 VFS layer to use when waking up early from
+    /// select, this tracks which FDs are ready for read().
+    fd_set *readFds_;
+
+    /// Copy of the initial state of the read FD set provided by the ESP32 VFS
+    /// layer. This is used for checking if we need to set the bit for the FD
+    /// when waking up early from select().
+    fd_set origReadFds_;
+
+    /// FD set provided by the ESP32 VFS layer to use when waking up early from
+    /// select, this tracks which FDs are ready for write().
+    fd_set *writeFds_;
+
+    /// Copy of the initial state of the write FD set provided by the ESP32 VFS
+    /// layer. This is used for checking if we need to set the bit for the FD
+    /// when waking up early from select().
+    fd_set origWriteFds_;
+
+    /// FD set provided by the ESP32 VFS layer to use when waking up early from
+    /// select, this tracks which FDs have an error (or exception).
+    fd_set *exceptFds_;
+
+    /// Copy of the initial state of the except FD set provided by the ESP32 VFS
+    /// layer. This is used for checking if we need to set the bit for the FD
+    /// when waking up early from select().
+    fd_set origExceptFds_;
 
 #endif // ESP32
 #if OPENMRN_HAVE_PSELECT
