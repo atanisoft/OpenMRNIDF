@@ -329,7 +329,7 @@ public:
         additionalComponents_.emplace_back(port);
     }
 
-#ifdef __FreeRTOS__
+#ifdef OPENMRN_FEATURE_EXECUTOR_SELECT
     /// Adds a CAN bus port with asynchronous driver API.
     ///
     /// @deprecated: most current FreeRTOS drivers use the the select-based
@@ -339,9 +339,7 @@ public:
         auto *port = new HubDeviceNonBlock<CanHubFlow>(can_hub(), device);
         additionalComponents_.emplace_back(port);
     }
-#endif // __FreeRTOS__
 
-#ifdef OPENMRN_FEATURE_EXECUTOR_SELECT
     /// Adds a CAN bus port with select-based asynchronous driver API.
     void add_can_port_select(const char *device)
     {
