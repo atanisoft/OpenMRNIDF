@@ -40,6 +40,7 @@
 #include "openlcb/ConfiguredTcpConnection.hxx"
 #include "openlcb/SimpleStack.hxx"
 #include "openlcb/TcpDefs.hxx"
+#include "os/Gpio.hxx"
 #include "utils/ConfigUpdateListener.hxx"
 #include "utils/GcTcpHub.hxx"
 #include "utils/Singleton.hxx"
@@ -54,17 +55,30 @@
 
 namespace openmrn_arduino
 {
+// Attempt to use __has_include to determine the ESP-IDF version that is being
+// used. If this is not available we will default to ESP-IDF v3.x.
+#if defined(__has_include)
 
-#if !defined(ESP_IDF_VERSION) || ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,1,0)
-#include <tcpip_adapter.h>
-
-/// ESP-IDF version neutral type definition for a static IP declaration. This
-/// includes the interface IP address, gateway and netmas.
-typedef tcpip_adapter_ip_info_t ESP32_ADAPTER_IP_INFO_TYPE;
-
-/// Maximum length of the hostname for the ESP32.
-static constexpr uint8_t ESP32_MAX_HOSTNAME_LENGTH = TCPIP_HOSTNAME_MAX_SIZE;
+#if __has_include(<esp_idf_version.h>)
+#include <esp_idf_version.h>
 #else
+#include <esp_system.h>
+#endif // __has_include esp_idf_version.h
+
+#endif // defined __has_include
+
+// If we do not have the ESP_IDF_VERSION we are likely running on IDF v3.2 or
+// earlier. These two defines will cause the IDF v3.2 behavior to be used by
+// default when not defined.
+#ifndef ESP_IDF_VERSION
+#define ESP_IDF_VERSION 0
+#endif
+
+#ifndef ESP_IDF_VERSION_VAL
+#define ESP_IDF_VERSION_VAL(a,b,c) 1
+#endif
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
 #include <esp_netif.h>
 
 /// ESP-IDF version neutral type definition for a static IP declaration. This
@@ -73,7 +87,16 @@ typedef esp_netif_ip_info_t ESP32_ADAPTER_IP_INFO_TYPE;
 
 /// Maximum length of the hostname for the ESP32.
 static constexpr uint8_t ESP32_MAX_HOSTNAME_LENGTH = 32;
-#endif
+#else // not IDF v4.1+
+#include <tcpip_adapter.h>
+
+/// ESP-IDF version neutral type definition for a static IP declaration. This
+/// includes the interface IP address, gateway and netmas.
+typedef tcpip_adapter_ip_info_t ESP32_ADAPTER_IP_INFO_TYPE;
+
+/// Maximum length of the hostname for the ESP32.
+static constexpr uint8_t ESP32_MAX_HOSTNAME_LENGTH = TCPIP_HOSTNAME_MAX_SIZE;
+#endif // IDF v4.1+
 
 /// Callback function definition for the network up events.
 ///
@@ -155,8 +178,8 @@ public:
     /// @param softap_static_ip is the static IP configuration for the SoftAP,
     /// when not specified the SoftAP will have an IP address of 192.168.4.1.
     ///
-    /// Note: Both ssid and password must remain in memory for the duration of
-    /// node uptime.
+    /// Note: These parameters are used as a default values for factory_reset
+    /// and will be overwitten by apply_configuration.
     Esp32WiFiManager(const char *ssid
                    , const char *password
                    , openlcb::SimpleStackBase *stack
@@ -165,10 +188,10 @@ public:
                    , wifi_mode_t wifi_mode = WIFI_MODE_STA
                    , ESP32_ADAPTER_IP_INFO_TYPE *station_static_ip = nullptr
                    , ip_addr_t primary_dns_server = ip_addr_any
-                   , uint8_t soft_ap_channel = 1
-                   , wifi_auth_mode_t soft_ap_auth = WIFI_AUTH_OPEN
                    , const char *soft_ap_name = nullptr
                    , const char *soft_ap_password = nullptr
+                   , wifi_auth_mode_t soft_ap_auth = WIFI_AUTH_OPEN
+                   , uint8_t soft_ap_channel = 1
                    , ESP32_ADAPTER_IP_INFO_TYPE *softap_static_ip = nullptr
     );
 
@@ -195,7 +218,7 @@ public:
     /// @param fd is the file descriptor used for the configuration settings.
     void factory_reset(int fd) override;
 
-#if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
     /// Processes an event coming from the ESP-IDF default event loop.
     ///
     /// @param ctx context parameter (unused).
@@ -204,7 +227,7 @@ public:
     /// @param event_data Data related to the event being sent, may be null.
     static void process_idf_event(void *ctx, esp_event_base_t event_base
                                 , int32_t event_id, void *event_data);
-#else
+#else // not IDF v4.1+
     /// Processes an ESP-IDF WiFi event based on the event raised by the
     /// ESP-IDF event loop processor. This should be used when the
     /// Esp32WiFiManager is not managing the WiFi or MDNS systems so that
@@ -217,7 +240,7 @@ public:
     /// @param ctx context parameter (unused).
     /// @param event is the system_event_t raised by ESP-IDF.
     static esp_err_t process_wifi_event(void *ctx, system_event_t *event);
-#endif
+#endif // IDF v4.1+
 
     /// If called, sets the ESP32 wifi stack to log verbose information to the
     /// ESP32 serial port.
@@ -254,18 +277,6 @@ public:
     /// @param service is the service name to remove from advertising.
     void mdns_unpublish(std::string service);
 
-    /// Forces the Esp32WiFiManager to wait until SSID connection completes.
-    ///
-    /// @param enable when true will force the Esp32WiFiManager to wait for
-    /// successful SSID connection (including IP assignemnt), when false and
-    /// the Esp32WiFiManager will not check the SSID connection process.
-    ///
-    /// The default behavior is to wait for SSID connection to complete when
-    /// the WiFi mode is WIFI_MODE_STA or WIFI_MODE_APSTA. When operating in
-    /// WIFI_MODE_APSTA mode the application may opt to present a configuration
-    /// portal to allow reconfiguration of the SSID.
-    void wait_for_ssid_connect(bool enable);
-
     /// Registers a callback for when the WiFi connection is up.
     ///
     /// @param callback The callback to invoke when the WiFi connection is
@@ -281,7 +292,7 @@ public:
 
     /// Registers a callback for when WiFi interfaces are being initialized.
     ///
-    /// @param callback The callback to invoke when the WiFi interface is
+    /// @param callback the callback to invoke when the WiFi interface is
     /// initializing.
     /// 
     /// NOTE: this will not be invoked for ESP_IF_WIFI_AP since there are no
@@ -289,6 +300,12 @@ public:
     void register_network_init_callback(
         esp32_network_init_callback_t callback);
 
+    /// Registers a @ref Gpio that will be toggled based on the current WiFi
+    /// status.
+    ///
+    /// @param led is the @ref Gpio to set High when WiFi is active and Low
+    /// when inactive.
+    void register_network_status_led(const Gpio *led);
 private:
     /// Default constructor.
     Esp32WiFiManager();
@@ -412,20 +429,13 @@ private:
     openlcb::SimpleStackBase *stack_;
 
     /// WiFi operating mode.
-    wifi_mode_t wifiMode_{WIFI_MODE_STA};
+    wifi_mode_t wifiMode_;
 
     /// Static IP Address configuration for the Station connection.
-    ESP32_ADAPTER_IP_INFO_TYPE *stationStaticIP_{nullptr};
+    ESP32_ADAPTER_IP_INFO_TYPE *stationStaticIP_;
 
     /// Primary DNS Address to use when configured for Static IP.
-    ip_addr_t primaryDNSAddress_{ip_addr_any};
-
-    /// Channel to use for the SoftAP interface.
-    uint8_t softAPChannel_{1};
-
-    /// Authentication mode to use for the SoftAP. If not set to WIFI_AUTH_OPEN
-    /// @ref softAPPassword_ will be used.
-    wifi_auth_mode_t softAPAuthMode_{WIFI_AUTH_OPEN};
+    ip_addr_t primaryDNSAddress_;
 
     /// User provided name for the SoftAP when active, defaults to
     /// @ref hostname_ when null.
@@ -437,9 +447,16 @@ private:
     /// NOTE: Only used when @ref wifiMode_ is set to WIFI_MODE_AP.
     std::string softAPPassword_;
 
+    /// Authentication mode to use for the SoftAP. If not set to WIFI_AUTH_OPEN
+    /// @ref softAPPassword_ will be used.
+    wifi_auth_mode_t softAPAuthMode_;
+    
+    /// Channel to use for the SoftAP interface.
+    uint8_t softAPChannel_;
+
     /// Static IP Address configuration for the SoftAP.
     /// Default static IP provided by ESP-IDF is 192.168.4.1.
-    ESP32_ADAPTER_IP_INFO_TYPE *softAPStaticIP_{nullptr};
+    ESP32_ADAPTER_IP_INFO_TYPE *softAPStaticIP_;
 
     /// Internal flag to request the wifi_manager_task to shutdown.
     bool shutdownRequested_{false};
@@ -450,7 +467,7 @@ private:
     /// If true, the esp32 will block startup until the SSID connection has
     /// successfully completed and upon failure (or timeout) the esp32 will be
     /// restarted.
-    bool waitForStationConnect_{true};
+    bool rebootOnStationFailure_{true};
 
     /// Cached copy of the radio sleep parameter, if true the WiFi radio will
     /// use low power mode.
@@ -519,7 +536,10 @@ private:
     /// Holder for callbacks to invoke when the WiFi subsystem has started.
     std::vector<esp32_network_init_callback_t> networkInitCallbacks_;
 
-#if defined(ESP_IDF_VERSION) && ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
+    /// WiFi connection status indicator LED.
+    const Gpio *wifiStatusLed_;
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
     /// Network interfaces that are managed by Esp32WiFiManager.
     esp_netif_t *esp_netifs[ESP_IF_MAX]{nullptr, nullptr, nullptr};
 #endif // IDF v4.1+
