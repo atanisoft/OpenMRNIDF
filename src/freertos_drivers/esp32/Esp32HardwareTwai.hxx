@@ -41,6 +41,7 @@
 #include <driver/gpio.h>
 #include <driver/periph_ctrl.h>
 #include <esp_vfs.h>
+#include <fcntl.h>
 
 #include "freertos_drivers/arduino/DeviceBuffer.hxx"
 #include "freertos_drivers/esp32/Esp32TwaiHal.hxx"
