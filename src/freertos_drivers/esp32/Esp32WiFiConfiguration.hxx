@@ -37,7 +37,6 @@
 
 #include "sdkconfig.h"
 #include "openlcb/ConfigRepresentation.hxx"
-#include "openlcb/ConfiguredTcpConnection.hxx"
 
 namespace openmrn_arduino
 {
@@ -150,10 +149,10 @@ public:
     static constexpr const char *WIFI_MODE_DESC =
         "Configures the WiFi operating mode.";
 
-    /// Visible name for the hostname field.
+    /// Visible name for the hostname_prefix field.
     static constexpr const char *HOSTNAME_NAME = "Hostname prefix";
 
-    /// Visible description for the hostname field.
+    /// Visible description for the hostname_prefix field.
     static constexpr const char *HOSTNAME_DESC =
         "Configures the hostname prefix used by the node.\nNote: the node ID "
         "will be appended to this value.";
@@ -175,34 +174,41 @@ public:
         "This is used to have the ESP32 advertise itself as a access point.";
 
     /// Visible name for the ssid field.
-    static constexpr const char *SSID_NAME = "SSID";
+    static constexpr const char *STATION_SSID_NAME = "Station SSID";
 
     /// Visible description for the Station ssid field.
     static constexpr const char *STATION_SSID_DESC =
         "Configures the SSID that the ESP32 will connect to.";
+
+    /// Visible name for the ssid field.
+    static constexpr const char *SOFTAP_SSID_NAME = "SoftAP SSID";
 
     /// Visible description for the SoftAP ssid field.
     static constexpr const char *SOFTAP_SSID_DESC =
         "Configures the SSID that the ESP32 will use for the SoftAP.";
 
     /// Visible name for the Station reboot_on_failure field.
-    static constexpr const char *STATION_REBOOT_NAME = "Reboot on failure";
+    static constexpr const char *STATION_WAIT_FOR_CONNECT_NAME =
+        "Wait for successful SSID connection";
 
     /// Visible description for the Station reboot_on_failure field.
-    static constexpr const char *STATION_REBOOT_DESC =
-        "Configures if the node will restart when there is a failure (or "
-        "timeout) during the SSID connection process.";
+    static constexpr const char *STATION_WAIT_FOR_CONNECT_DESC =
+        "Enabling this option will cause the node to restart when there is a "
+        "failure (or timeout) during the SSID connection process.";
 
     /// Visible name for the password field.
-    static constexpr const char *PASSWORD_NAME = "Password";
+    static constexpr const char *STATION_PASSWORD_NAME = "Station password";
 
     /// Visible description for the Station password field.
     static constexpr const char *STATION_PASSWORD_DESC =
-        "Configures the SSID that the ESP32 will connect to.";
+        "Configures the password that the ESP32 will use for the station SSID.";
+
+    /// Visible name for the password field.
+    static constexpr const char *SOFTAP_PASSWORD_NAME = "SoftAP assword";
 
     /// Visible description for the SoftAP password field.
     static constexpr const char *SOFTAP_PASSWORD_DESC =
-        "Configures the SSID that the ESP32 will use for the SoftAP.";
+        "Configures the password that the ESP32 will use for the SoftAP.";
 
     /// <map> of supported values for the SoftAP authentication field.
     static constexpr const char *SOFTAP_AUTH_MAP =
@@ -230,6 +236,64 @@ public:
         "Configures the WiFi channel to use for the SoftAP.\nNote: Some "
         "channels overlap eachother and may not provide optimal performance."
         "Recommended channels are: 1, 6, 11 since these do not overlap.";
+
+    /// Visible name of the service name field in the uplink and hub groups.
+    static constexpr const char *SERVICE_NAME = "mDNS Service";
+    /// Visible description of the service name field in the uplink and hub
+    /// groups.
+    static constexpr const char *SERVICE_DESC =
+        "mDNS or Bonjour service name, such as _openlcb-can._tcp";
+
+    /// Visible name of the ip address field inside the uplink group.
+    static constexpr const char *IP_ADDRESS_NAME = "IP Address";
+    /// Visible description of the ip address field inside the uplink group.
+    static constexpr const char *IP_ADDRESS_DESC =
+        "Enter the server IP address. Example: 192.168.0.55\n"
+        "Note: This will be used as a fallback when mDNS lookup is not "
+        "successful.";
+
+    /// Default value for the port number field. This will also be used for
+    /// factory reset code, not just for user documentation.
+    static constexpr int DEFAULT_PORT = 12021;
+    /// Visible name of the port number field.
+    static constexpr const char *PORT_NAME = "Port Number";
+    /// Visible description of the port number field.
+    static constexpr const char *PORT_DESC =
+        "TCP port number of the server. Most of the time this does not need to "
+        "be changed.";
+
+    /// Visible name of the sntp_enable field.
+    static constexpr const char *SNTP_ENABLE_NAME = "Enable SNTP";
+
+    /// Visible description of the sntp_enable field.
+    static constexpr const char *SNTP_ENABLE_DESC =
+        "Enabling this option will allow the ESP32 to poll an SNTP server at "
+        "regular intervals to obtain the current time. The refresh interval "
+        "roughly once per hour.";
+
+    /// Visible name of the sntp_server field.
+    static constexpr const char *SNTP_SERVER_NAME = "SNTP Server";
+
+    /// Visible description of the sntp_server field.
+    static constexpr const char *SNTP_SERVER_DESC =
+        "Enter the SNTP Server address. Example: pool.ntp.org\n"
+        "Most of the time this does not need to be changed.";
+
+    /// Visible name of the timezone field.
+    static constexpr const char *TIMEZONE_NAME = "TimeZone";
+    
+    /// Visible description of the timezone field.
+    static constexpr const char *TIMEZONE_DESC =
+        "This is the timezone that the ESP32 should use, note it must be in "
+        "POSIX notation. Note: The timezone is only configured when SNTP is "
+        "also enabled.\n"
+        "A few common values:\n"
+        "PST8PDT,M3.2.0,M11.1.0 -- UTC-8 with automatic DST adjustment\n"
+        "MST7MDT,M3.2.0,M11.1.0 -- UTC-7 with automatic DST adjustment\n"
+        "CST6CDT,M3.2.0,M11.1.0 -- UTC-6 with automatic DST adjustment\n"
+        "EST5EDT,M3.2.0,M11.1.0 -- UTC-5 with automatic DST adjustment\n"
+        "A complete list can be seen here in the second column:\n"
+        "https://github.com/nayarsystems/posix_tz_db/blob/master/zones.csv";
 };
 
 /// CDI Configuration for an @ref Esp32WiFiManager managed hub.
@@ -245,21 +309,13 @@ CDI_GROUP_ENTRY(port, openlcb::Uint16ConfigEntry,
     Name(Esp32WiFiConfigurationParams::HUB_LISTENER_PORT_NAME),
     Description(Esp32WiFiConfigurationParams::HUB_LISTENER_PORT_DESC),
     Min(1), Max(65535),
-    Default(openlcb::TcpClientDefaultParams::DEFAULT_PORT));
+    Default(Esp32WiFiConfigurationParams::DEFAULT_PORT));
 /// Specifies the mDNS service name to advertise for the hub.
-CDI_GROUP_ENTRY(service_name, openlcb::StringConfigEntry<48>,
-    Name(openlcb::TcpClientDefaultParams::SERVICE_NAME),
-    Description(openlcb::TcpClientDefaultParams::SERVICE_DESCR));
+CDI_GROUP_ENTRY(service_name, openlcb::StringConfigEntry<64>,
+    Name(Esp32WiFiConfigurationParams::SERVICE_NAME),
+    Description(Esp32WiFiConfigurationParams::SERVICE_DESC));
 /// Reserved space for future expansion.
 CDI_GROUP_ENTRY(reserved, openlcb::BytesConfigEntry<6>, Hidden(true));
-CDI_GROUP_END();
-
-/// CDI Configuration for an automated uplink connection.
-CDI_GROUP(AutomaticUplinkConfiguration);
-/// Specifies the mDNS service name to search for.
-CDI_GROUP_ENTRY(service_name, openlcb::StringConfigEntry<48>,
-    Name(openlcb::TcpClientDefaultParams::SERVICE_NAME),
-    Description(openlcb::TcpClientDefaultParams::SERVICE_DESCR));
 CDI_GROUP_END();
 
 /// CDI Configuration for an @ref Esp32WiFiManager managed uplink connection.
@@ -270,16 +326,90 @@ CDI_GROUP_ENTRY(enable, openlcb::Uint8ConfigEntry,
     Description(Esp32WiFiConfigurationParams::UPLINK_ENABLE_DESC),
     Min(0), Max(1), Default(1), /* Enabled */
     MapValues(Esp32WiFiConfigurationParams::BOOLEAN_MAP));
-CDI_GROUP_ENTRY(automatic, AutomaticUplinkConfiguration,
-    Name(openlcb::TcpClientDefaultParams::AUTO_ADDRESS_NAME));
-CDI_GROUP_ENTRY(manual,
-    openlcb::TcpManualAddress<openlcb::TcpClientDefaultParams>,
-    Name(openlcb::TcpClientDefaultParams::MANUAL_ADDRESS_NAME));
+/// Specifies the mDNS service name to search for.
+CDI_GROUP_ENTRY(service_name, openlcb::StringConfigEntry<64>,
+    Name(Esp32WiFiConfigurationParams::SERVICE_NAME),
+    Description(Esp32WiFiConfigurationParams::SERVICE_DESC));
+CDI_GROUP_ENTRY(ip_address, openlcb::StringConfigEntry<64>,
+    Name(Esp32WiFiConfigurationParams::IP_ADDRESS_NAME),
+    Description(Esp32WiFiConfigurationParams::IP_ADDRESS_DESC));
+CDI_GROUP_ENTRY(port, openlcb::Uint16ConfigEntry,
+    Name(Esp32WiFiConfigurationParams::PORT_NAME),
+    Description(Esp32WiFiConfigurationParams::PORT_DESC),
+    Min(1), Max(65535),
+    Default(Esp32WiFiConfigurationParams::DEFAULT_PORT));
 CDI_GROUP_END();
 
-/// CDI Configuration for @ref Esp32WiFiManager advanced configuration
-/// options.
-CDI_GROUP(AdvancedConfiguration);
+/// CDI Configuration for an @ref Esp32WiFiManager managed node.
+CDI_GROUP(WiFiConfiguration);
+/// Allows configuring the WiFi operating mode of the node.
+CDI_GROUP_ENTRY(wifi_mode, openlcb::Uint8ConfigEntry,
+    Name(Esp32WiFiConfigurationParams::WIFI_MODE_NAME),
+    Description(Esp32WiFiConfigurationParams::WIFI_MODE_DESC),
+    Min(0), Max(3), Default(2), /* SoftAP */
+    MapValues(Esp32WiFiConfigurationParams::WIFI_MODES_MAP));
+/// Allows configuration of the node's hostname.
+CDI_GROUP_ENTRY(hostname_prefix, openlcb::StringConfigEntry<21>,
+    Name(Esp32WiFiConfigurationParams::HOSTNAME_NAME),
+    Description(Esp32WiFiConfigurationParams::HOSTNAME_DESC));
+/// Allows setting the SSID that the Station will attempt to connect to.
+CDI_GROUP_ENTRY(station_ssid, openlcb::StringConfigEntry<32>,
+    Name(Esp32WiFiConfigurationParams::STATION_SSID_NAME),
+    Description(Esp32WiFiConfigurationParams::STATION_SSID_DESC));
+/// Allows setting the password that the Station will use for connecting to the
+/// configured SSID. Note: This value will be prefixed with [b64] and be base64
+/// encoded when read via CDI.
+CDI_GROUP_ENTRY(station_password, openlcb::StringConfigEntry<128>,
+    Name(Esp32WiFiConfigurationParams::STATION_PASSWORD_NAME),
+    Description(Esp32WiFiConfigurationParams::STATION_PASSWORD_DESC));
+/// Allows configuration of the SSID used by the SoftAP.
+CDI_GROUP_ENTRY(softap_ssid, openlcb::StringConfigEntry<32>,
+    Name(Esp32WiFiConfigurationParams::SOFTAP_SSID_NAME),
+    Description(Esp32WiFiConfigurationParams::SOFTAP_SSID_DESC));
+/// Allows configuration of the password used by the SoftAP. Note: This value
+/// will be prefixed with [b64] and be base64 encoded when read via CDI.
+CDI_GROUP_ENTRY(softap_password, openlcb::StringConfigEntry<128>,
+    Name(Esp32WiFiConfigurationParams::SOFTAP_PASSWORD_NAME),
+    Description(Esp32WiFiConfigurationParams::SOFTAP_PASSWORD_DESC));
+/// Allows configuration of the authentication mode used by the SoftAP.
+CDI_GROUP_ENTRY(softap_auth, openlcb::Uint8ConfigEntry,
+    Name(Esp32WiFiConfigurationParams::SOFTAP_AUTH_NAME),
+    Description(Esp32WiFiConfigurationParams::SOFTAP_AUTH_DESC),
+    Min(0), Max(7), Default(3), /* WPA2 */
+    MapValues(Esp32WiFiConfigurationParams::SOFTAP_AUTH_MAP));
+/// Allows configuration of the WiFi channel used by the SoftAP.
+CDI_GROUP_ENTRY(softap_channel, openlcb::Uint8ConfigEntry,
+    Name(Esp32WiFiConfigurationParams::SOFTAP_CHANNEL_NAME),
+    Description(Esp32WiFiConfigurationParams::SOFTAP_CHANNEL_DESC),
+    Min(1), Max(14), Default(1));
+/// Enables the usage of SNTP on the node.
+CDI_GROUP_ENTRY(sntp_enabled, openlcb::Uint8ConfigEntry,
+    Name(Esp32WiFiConfigurationParams::SNTP_ENABLE_NAME),
+    Description(Esp32WiFiConfigurationParams::SNTP_ENABLE_DESC),
+    Min(0), Max(1), Default(0), /* Disabled */
+    MapValues(Esp32WiFiConfigurationParams::BOOLEAN_MAP));
+/// SNTP Server to poll for time updates.
+CDI_GROUP_ENTRY(sntp_server, openlcb::StringConfigEntry<64>,
+    Name(Esp32WiFiConfigurationParams::SNTP_SERVER_NAME),
+    Description(Esp32WiFiConfigurationParams::SNTP_SERVER_DESC));
+/// Allows configuring the default TimeZone of the node.
+CDI_GROUP_ENTRY(timezone, openlcb::StringConfigEntry<64>,
+    Name(Esp32WiFiConfigurationParams::TIMEZONE_NAME),
+    Description(Esp32WiFiConfigurationParams::TIMEZONE_DESC));
+/// CDI Configuration to enable this node to be a hub.
+CDI_GROUP_ENTRY(hub, HubConfiguration,
+    Name(Esp32WiFiConfigurationParams::HUB_NAME),
+    Description(Esp32WiFiConfigurationParams::HUB_DESC)
+// On the ESP32 S2 hide the Hub option by default since there is less system
+// resources available.
+#ifndef CONFIG_IDF_TARGET_ESP32
+    , Hidden(true)
+#endif // CONFIG_IDF_TARGET_ESP32
+);
+/// CDI Configuration for this node's connection to an uplink hub.
+CDI_GROUP_ENTRY(uplink, UplinkConfiguration,
+    Name(Esp32WiFiConfigurationParams::UPLINK_NAME),
+    Description(Esp32WiFiConfigurationParams::UPLINK_DESC));
 /// Allows the WiFi system to use power-saving techniques to conserve power
 /// when the node is powered via battery.
 CDI_GROUP_ENTRY(sleep, openlcb::Uint8ConfigEntry,
@@ -295,91 +425,14 @@ CDI_GROUP_ENTRY(tx_power, openlcb::Int8ConfigEntry,
     Description(Esp32WiFiConfigurationParams::WIFI_TX_POWER_DESC),
     Min(8), Max(78), Default(78), /* Max power */
     MapValues(Esp32WiFiConfigurationParams::WIFI_TX_POWER_MAP));
-CDI_GROUP_END();
-
-/// CDI Configuration for the @ref Esp32WiFiManager Station configuration
-/// options.
-CDI_GROUP(WiFiStationConfig);
-/// Allows setting the SSID that the Station will attempt to connect to.
-CDI_GROUP_ENTRY(ssid, openlcb::StringConfigEntry<64>,
-    Name(Esp32WiFiConfigurationParams::SSID_NAME),
-    Description(Esp32WiFiConfigurationParams::STATION_SSID_DESC));
-/// Allows setting the password that the Station will use for connecting to the
-/// configured SSID.
-CDI_GROUP_ENTRY(password, openlcb::StringConfigEntry<64>,
-    Name(Esp32WiFiConfigurationParams::PASSWORD_NAME),
-    Description(Esp32WiFiConfigurationParams::STATION_PASSWORD_DESC));
 /// Allows controlling if the ESP32 will reboot the node if there is a timeout
 /// while connecting to the configured SSID.
-CDI_GROUP_ENTRY(reboot_on_failure, openlcb::Uint8ConfigEntry,
-    Name(Esp32WiFiConfigurationParams::STATION_REBOOT_NAME),
-    Description(Esp32WiFiConfigurationParams::STATION_REBOOT_DESC),
+CDI_GROUP_ENTRY(station_wait_for_connect, openlcb::Uint8ConfigEntry,
+    Name(Esp32WiFiConfigurationParams::STATION_WAIT_FOR_CONNECT_NAME),
+    Description(Esp32WiFiConfigurationParams::STATION_WAIT_FOR_CONNECT_DESC),
     Min(0), Max(1), Default(1), /* Enabled */
     MapValues(Esp32WiFiConfigurationParams::BOOLEAN_MAP));
-CDI_GROUP_END();
 
-/// CDI Configuration for the @ref Esp32WiFiManager SoftAP configuration
-/// options.
-CDI_GROUP(WiFiSoftAPConfig);
-/// Allows configuration of the SSID used by the SoftAP.
-CDI_GROUP_ENTRY(ssid, openlcb::StringConfigEntry<64>,
-    Name(Esp32WiFiConfigurationParams::SSID_NAME),
-    Description(Esp32WiFiConfigurationParams::SOFTAP_SSID_DESC));
-/// Allows configuration of the password used by the SoftAP.
-CDI_GROUP_ENTRY(password, openlcb::StringConfigEntry<64>,
-    Name(Esp32WiFiConfigurationParams::PASSWORD_NAME),
-    Description(Esp32WiFiConfigurationParams::SOFTAP_PASSWORD_DESC));
-/// Allows configuration of the authentication mode used by the SoftAP.
-CDI_GROUP_ENTRY(auth, openlcb::Uint8ConfigEntry,
-    Name(Esp32WiFiConfigurationParams::SOFTAP_AUTH_NAME),
-    Description(Esp32WiFiConfigurationParams::SOFTAP_AUTH_DESC),
-    Min(0), Max(7), Default(3), /* WPA2 */
-    MapValues(Esp32WiFiConfigurationParams::SOFTAP_AUTH_MAP));
-/// Allows configuration of the WiFi channel used by the SoftAP.
-CDI_GROUP_ENTRY(channel, openlcb::Uint8ConfigEntry,
-    Name(Esp32WiFiConfigurationParams::SOFTAP_CHANNEL_NAME),
-    Description(Esp32WiFiConfigurationParams::SOFTAP_CHANNEL_DESC),
-    Min(1), Max(14), Default(1));
-CDI_GROUP_END();
-
-/// CDI Configuration for an @ref Esp32WiFiManager managed node.
-CDI_GROUP(WiFiConfiguration);
-/// Allows configuring the WiFi operating mode of the node.
-CDI_GROUP_ENTRY(wifi_mode, openlcb::Uint8ConfigEntry,
-    Name(Esp32WiFiConfigurationParams::WIFI_MODE_NAME),
-    Description(Esp32WiFiConfigurationParams::WIFI_MODE_DESC),
-    Min(0), Max(3), Default(2), /* SoftAP */
-    MapValues(Esp32WiFiConfigurationParams::WIFI_MODES_MAP));
-/// Allows configuration of the node's hostname.
-CDI_GROUP_ENTRY(hostname, openlcb::StringConfigEntry<21>,
-    Name(Esp32WiFiConfigurationParams::HOSTNAME_NAME),
-    Description(Esp32WiFiConfigurationParams::HOSTNAME_DESC));
-/// CDI Configuration for the Station interface.
-CDI_GROUP_ENTRY(station, WiFiStationConfig,
-    Name(Esp32WiFiConfigurationParams::STATION_NAME),
-    Description(Esp32WiFiConfigurationParams::STATION_DESC));
-/// CDI Configuration for the SoftAP interface.
-CDI_GROUP_ENTRY(softap, WiFiSoftAPConfig,
-    Name(Esp32WiFiConfigurationParams::SOFTAP_NAME),
-    Description(Esp32WiFiConfigurationParams::SOFTAP_DESC));
-/// CDI Configuration to enable this node to be a hub.
-CDI_GROUP_ENTRY(hub, HubConfiguration,
-    Name(Esp32WiFiConfigurationParams::HUB_NAME),
-    Description(Esp32WiFiConfigurationParams::HUB_DESC)
-// On the ESP32 S2 hide the Hub option by default since there is less system
-// resources available.
-#ifndef CONFIG_IDF_TARGET_ESP32
-    , Hidden(true)
-#endif // CONFIG_IDF_TARGET_ESP32
-);
-/// CDI Configuration for this node's connection to an uplink hub.
-CDI_GROUP_ENTRY(uplink, UplinkConfiguration,
-    Name(Esp32WiFiConfigurationParams::UPLINK_NAME),
-    Description(Esp32WiFiConfigurationParams::UPLINK_DESC));
-/// CDI Configuration for this node's advanced configuration settings.
-CDI_GROUP_ENTRY(advanced_config, AdvancedConfiguration,
-    Name(Esp32WiFiConfigurationParams::ADVANCED_CONFIG_NAME),
-    Description(Esp32WiFiConfigurationParams::ADVANCED_CONFIG_DESC));
 CDI_GROUP_END(); // WiFiConfiguration
 
 } // namespace openmrn_arduino
