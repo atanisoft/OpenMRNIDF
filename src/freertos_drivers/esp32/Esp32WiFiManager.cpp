@@ -292,6 +292,11 @@ ConfigUpdateListener::UpdateAction Esp32WiFiManager::apply_configuration(
     {
         // try and use the value as-is
         stationPassword_ = rawStationPassword;
+        // base64 encode the station password
+        string encoded_station_pw = base64_encode(stationPassword_);
+        // add marker to indicate it is encoded
+        encoded_station_pw.insert(0, "***");
+        cfg_.station_password().write(fd, encoded_station_pw);
     }
     waitForStationConnect_ =
         CDI_READ_TRIM_DEFAULT(cfg_.station_wait_for_connect, fd);
@@ -315,6 +320,11 @@ ConfigUpdateListener::UpdateAction Esp32WiFiManager::apply_configuration(
     {
         // try and use the value as-is
         softAPPassword_ = rawSoftAPPassword;
+        // base64 encode the station password
+        string encoded_softap_pw = base64_encode(softAPPassword_);
+        // add marker to indicate it is encoded
+        encoded_softap_pw.insert(0, "***");
+        cfg_.softap_password().write(fd, encoded_softap_pw);
     }
     softAPAuthMode_ =
         (wifi_auth_mode_t)CDI_READ_TRIM_DEFAULT(cfg_.softap_auth, fd);
@@ -477,14 +487,14 @@ void Esp32WiFiManager::factory_reset(int fd)
     // base64 encode the station password
     string encoded_station_pw = base64_encode(stationPassword_);
     // add marker to indicate it is encoded
-    encoded_station_pw.insert(0, "[b64]");
+    encoded_station_pw.insert(0, "***");
     cfg_.station_password().write(fd, encoded_station_pw);
     cfg_.station_wait_for_connect().write(fd, waitForStationConnect_);
     cfg_.softap_ssid().write(fd, softAPName_);
     // base64 encode the station password
     string encoded_softap_pw = base64_encode(softAPPassword_);
     // add marker to indicate it is encoded
-    encoded_softap_pw.insert(0, "[b64]");
+    encoded_softap_pw.insert(0, "***");
     cfg_.softap_password().write(fd, encoded_softap_pw);
     cfg_.softap_auth().write(fd, softAPAuthMode_);
     cfg_.softap_channel().write(fd, softAPChannel_);
