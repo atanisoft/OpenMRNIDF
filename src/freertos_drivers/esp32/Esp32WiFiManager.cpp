@@ -360,49 +360,53 @@ ConfigUpdateListener::UpdateAction Esp32WiFiManager::apply_configuration(
     hostname_.resize(MAX_HOSTNAME_LENGTH);
     hostname_.shrink_to_fit();
 
-    // If we do not have a station SSID configured, default to SoftAP mode.
-    if (stationSsid_.empty())
-    {
-        wifiMode_ = WIFI_MODE_AP;
-    }
-
     string mode_desc = "";
-    if (wifiMode_ == WIFI_MODE_STA || wifiMode_ == WIFI_MODE_APSTA)
-    {
-        if (stationSsid_.length() > MAX_SSID_LENGTH)
-        {
-            LOG(WARNING,
-                "[WiFi] Station SSID: %s is too long and will be truncated",
-                stationSsid_.c_str());
-            stationSsid_.resize(MAX_SSID_LENGTH);
-        }
-        mode_desc += StringPrintf("Station: %s", stationSsid_.c_str());
-    }
-    if (wifiMode_ == WIFI_MODE_AP || wifiMode_ == WIFI_MODE_APSTA)
-    {
-        // If the SoftAP name is blank, default it to the generated hostname.
-        if (softAPName_.empty())
-        {
-            softAPName_ = hostname_;
-        }
-        if (softAPName_.length() > MAX_SSID_LENGTH)
-        {
-            LOG(WARNING,
-                "[WiFi] SoftAP SSID: %s is too long and will be truncated",
-                softAPName_.c_str());
-            softAPName_.resize(MAX_SSID_LENGTH);
-        }
-        if (!mode_desc.empty())
-        {
-            mode_desc += ", ";
-        }
-        mode_desc += StringPrintf("SoftAP: %s (auth:%s, channel:%d)",
-            softAPName_.c_str(), WIFI_AUTH_MODE_MAP[softAPAuthMode_],
-            softAPChannel_);
-    }
     if (wifiMode_ == WIFI_MODE_NULL)
     {
         mode_desc = "Off";
+    }
+    else
+    {
+        // If we do not have a station SSID configured, default to SoftAP mode.
+        if (stationSsid_.empty())
+        {
+            wifiMode_ = WIFI_MODE_AP;
+        }
+
+        if (wifiMode_ == WIFI_MODE_STA || wifiMode_ == WIFI_MODE_APSTA)
+        {
+            if (stationSsid_.length() > MAX_SSID_LENGTH)
+            {
+                LOG(WARNING,
+                    "[WiFi] Station SSID: %s is too long and will be truncated",
+                    stationSsid_.c_str());
+                stationSsid_.resize(MAX_SSID_LENGTH);
+            }
+            mode_desc += StringPrintf("Station: %s", stationSsid_.c_str());
+        }
+        if (wifiMode_ == WIFI_MODE_AP || wifiMode_ == WIFI_MODE_APSTA)
+        {
+            // If the SoftAP name is blank, default it to the generated
+            // hostname.
+            if (softAPName_.empty())
+            {
+                softAPName_ = hostname_;
+            }
+            if (softAPName_.length() > MAX_SSID_LENGTH)
+            {
+                LOG(WARNING,
+                    "[WiFi] SoftAP SSID: %s is too long and will be truncated",
+                    softAPName_.c_str());
+                softAPName_.resize(MAX_SSID_LENGTH);
+            }
+            if (!mode_desc.empty())
+            {
+                mode_desc += ", ";
+            }
+            mode_desc += StringPrintf("SoftAP: %s (auth:%s, channel:%d)",
+                softAPName_.c_str(), WIFI_AUTH_MODE_MAP[softAPAuthMode_],
+                softAPChannel_);
+        }
     }
 
     LOG(INFO,
@@ -813,7 +817,11 @@ void Esp32WiFiManager::start_wifi_system()
         }
 
         LOG(INFO, "[WiFi] Configuring SoftAP (SSID:%s)", conf.ap.ssid);
-        //LOG(VERBOSE, "[WiFi] SoftAP PW: %s", conf.ap.password);
+        if (verboseLogging_)
+        {
+            ESP_LOG_BUFFER_HEXDUMP("WiFi", &conf, sizeof(wifi_config_t),
+                                   ESP_LOG_ERROR);
+        }
         ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_AP, &conf));
     }
 
@@ -836,6 +844,11 @@ void Esp32WiFiManager::start_wifi_system()
         }
 
         LOG(INFO, "[WiFi] Configuring Station (SSID: %s)", conf.sta.ssid);
+        if (verboseLogging_)
+        {
+            ESP_LOG_BUFFER_HEXDUMP("WiFi", &conf, sizeof(wifi_config_t),
+                                   ESP_LOG_ERROR);
+        }
         ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &conf));
     }
 
