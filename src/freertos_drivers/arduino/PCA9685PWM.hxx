@@ -104,7 +104,7 @@ public:
         mode2.och = 1;
         register_write(MODE2, mode2.byte);
 
-        start(name, -1, 2048);
+        start(name, 0, 2048);
     }
 
     /// Destructor.
@@ -293,8 +293,8 @@ private:
             ctl.off.counts = (counts + (channel * 256)) % 0x1000;
         }
 
-        htole16(ctl.on.word);
-        htole16(ctl.off.word);
+        ctl.on.word = htole16(ctl.on.word);
+        ctl.off.word = htole16(ctl.off.word);
 
         Registers offset = (Registers)(LED0_ON_L + (channel * 4));
         register_write_multiple(offset, &ctl, sizeof(ctl));
