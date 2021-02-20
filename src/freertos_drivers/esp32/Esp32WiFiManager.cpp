@@ -360,49 +360,53 @@ ConfigUpdateListener::UpdateAction Esp32WiFiManager::apply_configuration(
     hostname_.resize(MAX_HOSTNAME_LENGTH);
     hostname_.shrink_to_fit();
 
-    // If we do not have a station SSID configured, default to SoftAP mode.
-    if (stationSsid_.empty())
-    {
-        wifiMode_ = WIFI_MODE_AP;
-    }
-
     string mode_desc = "";
-    if (wifiMode_ == WIFI_MODE_STA || wifiMode_ == WIFI_MODE_APSTA)
-    {
-        if (stationSsid_.length() > MAX_SSID_LENGTH)
-        {
-            LOG(WARNING,
-                "[WiFi] Station SSID: %s is too long and will be truncated",
-                stationSsid_.c_str());
-            stationSsid_.resize(MAX_SSID_LENGTH);
-        }
-        mode_desc += StringPrintf("Station: %s", stationSsid_.c_str());
-    }
-    if (wifiMode_ == WIFI_MODE_AP || wifiMode_ == WIFI_MODE_APSTA)
-    {
-        // If the SoftAP name is blank, default it to the generated hostname.
-        if (softAPName_.empty())
-        {
-            softAPName_ = hostname_;
-        }
-        if (softAPName_.length() > MAX_SSID_LENGTH)
-        {
-            LOG(WARNING,
-                "[WiFi] SoftAP SSID: %s is too long and will be truncated",
-                softAPName_.c_str());
-            softAPName_.resize(MAX_SSID_LENGTH);
-        }
-        if (!mode_desc.empty())
-        {
-            mode_desc += ", ";
-        }
-        mode_desc += StringPrintf("SoftAP: %s (auth:%s, channel:%d)",
-            softAPName_.c_str(), WIFI_AUTH_MODE_MAP[softAPAuthMode_],
-            softAPChannel_);
-    }
     if (wifiMode_ == WIFI_MODE_NULL)
     {
         mode_desc = "Off";
+    }
+    else
+    {
+        // If we do not have a station SSID configured, default to SoftAP mode.
+        if (stationSsid_.empty())
+        {
+            wifiMode_ = WIFI_MODE_AP;
+        }
+
+        if (wifiMode_ == WIFI_MODE_STA || wifiMode_ == WIFI_MODE_APSTA)
+        {
+            if (stationSsid_.length() > MAX_SSID_LENGTH)
+            {
+                LOG(WARNING,
+                    "[WiFi] Station SSID:%s is too long and will be truncated",
+                    stationSsid_.c_str());
+                stationSsid_.resize(MAX_SSID_LENGTH);
+            }
+            mode_desc += StringPrintf("Station:%s", stationSsid_.c_str());
+        }
+        if (wifiMode_ == WIFI_MODE_AP || wifiMode_ == WIFI_MODE_APSTA)
+        {
+            // If the SoftAP name is blank, default it to the generated
+            // hostname.
+            if (softAPName_.empty())
+            {
+                softAPName_ = hostname_;
+            }
+            if (softAPName_.length() > MAX_SSID_LENGTH)
+            {
+                LOG(WARNING,
+                    "[WiFi] SoftAP SSID:%s is too long and will be truncated",
+                    softAPName_.c_str());
+                softAPName_.resize(MAX_SSID_LENGTH);
+            }
+            if (!mode_desc.empty())
+            {
+                mode_desc += ", ";
+            }
+            mode_desc += StringPrintf("SoftAP:%s (auth:%s, channel:%d)",
+                softAPName_.c_str(), WIFI_AUTH_MODE_MAP[softAPAuthMode_],
+                softAPChannel_);
+        }
     }
 
     LOG(INFO,
@@ -664,6 +668,33 @@ void Esp32WiFiManager::register_network_init_callback(
     networkInitCallbacks_.push_back(callback);
 }
 
+// Adds a callback which will be called when SNTP events occur.
+void Esp32WiFiManager::register_network_time_callback(
+    esp32_network_time_callback_t callback)
+{
+    const std::lock_guard<std::mutex> lock(networkCallbacksLock_);
+    networkTimeCallbacks_.push_back(callback);
+}
+
+// SNTP callback hook to schedule callbacks.
+void Esp32WiFiManager::sync_time(time_t now)
+{
+    const std::lock_guard<std::mutex> lock(networkCallbacksLock_);
+    for (esp32_network_time_callback_t cb : networkTimeCallbacks_)
+    {
+        stack_->executor()->add(new CallbackExecutable([cb,now]
+        {
+            cb(now);
+        }));
+    }
+}
+
+// return the configured SoftAP name.
+string Esp32WiFiManager::get_softap_ssid()
+{
+    return softAPName_;
+}
+
 // If the Esp32WiFiManager is setup to manage the WiFi system, the following
 // steps are executed:
 // 1) Start the TCP/IP adapter.
@@ -813,7 +844,11 @@ void Esp32WiFiManager::start_wifi_system()
         }
 
         LOG(INFO, "[WiFi] Configuring SoftAP (SSID:%s)", conf.ap.ssid);
-        //LOG(VERBOSE, "[WiFi] SoftAP PW: %s", conf.ap.password);
+        if (verboseLogging_)
+        {
+            ESP_LOG_BUFFER_HEXDUMP("WiFi", &conf, sizeof(wifi_config_t),
+                                   ESP_LOG_ERROR);
+        }
         ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_AP, &conf));
     }
 
@@ -835,7 +870,12 @@ void Esp32WiFiManager::start_wifi_system()
             conf.sta.password[MAX_PASSWORD_LENGTH] = 0;
         }
 
-        LOG(INFO, "[WiFi] Configuring Station (SSID: %s)", conf.sta.ssid);
+        LOG(INFO, "[WiFi] Configuring Station (SSID:%s)", conf.sta.ssid);
+        if (verboseLogging_)
+        {
+            ESP_LOG_BUFFER_HEXDUMP("WiFi", &conf, sizeof(wifi_config_t),
+                                   ESP_LOG_ERROR);
+        }
         ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &conf));
     }
 
@@ -892,7 +932,7 @@ void Esp32WiFiManager::start_wifi_system()
         // Check if we successfully connected or not. If not, force a reboot.
         if ((bits & WIFI_CONNECTED_BIT) != WIFI_CONNECTED_BIT)
         {
-            LOG(FATAL, "[WiFi] Failed to connect to SSID: %s.",
+            LOG(FATAL, "[WiFi] Failed to connect to SSID:%s.",
                 stationSsid_.c_str());
         }
 
@@ -1329,7 +1369,7 @@ void Esp32WiFiManager::on_station_started()
     }
 
     LOG(INFO,
-        "[WiFi] Station started, attempting to connect to SSID: %s.",
+        "[WiFi] Station started, attempting to connect to SSID:%s.",
         stationSsid_.c_str());
     // Start the SSID connection process.
     esp_wifi_connect();
@@ -1349,7 +1389,7 @@ void Esp32WiFiManager::on_station_started()
 
 void Esp32WiFiManager::on_station_connected()
 {
-    LOG(INFO, "[WiFi] Connected to SSID: %s", stationSsid_.c_str());
+    LOG(INFO, "[WiFi] Connected to SSID:%s", stationSsid_.c_str());
     // Set the flag that indictes we are connected to the SSID.
     xEventGroupSetBits(wifiStatusEventGroup_, WIFI_CONNECTED_BIT);
 }
@@ -1367,7 +1407,7 @@ void Esp32WiFiManager::on_station_disconnected(uint8_t reason)
         // track that we were connected previously.
         was_previously_connected = true;
 
-        LOG(INFO, "[WiFi] Lost connection to SSID: %s (reason:%d)",
+        LOG(INFO, "[WiFi] Lost connection to SSID:%s (reason:%d)",
             stationSsid_.c_str(), reason);
         // Clear the flag that indicates we are connected to the SSID.
         xEventGroupClearBits(wifiStatusEventGroup_, WIFI_CONNECTED_BIT);
@@ -1383,13 +1423,13 @@ void Esp32WiFiManager::on_station_disconnected(uint8_t reason)
     // trigger the reconnection process at this point.
     if (was_previously_connected)
     {
-        LOG(INFO, "[WiFi] Attempting to reconnect to SSID: %s.",
+        LOG(INFO, "[WiFi] Attempting to reconnect to SSID:%s.",
             stationSsid_.c_str());
     }
     else
     {
         LOG(INFO,
-            "[WiFi] Connection failed, reconnecting to SSID: %s (reason:%d).",
+            "[WiFi] Connection failed, reconnecting to SSID:%s (reason:%d).",
             stationSsid_.c_str(), reason);
     }
     esp_wifi_connect();
@@ -1707,7 +1747,7 @@ void Esp32WiFiManager::on_wifi_scan_completed(wifi_event_sta_scan_done_t scan_in
 #if LOGLEVEL >= VERBOSE
         for (int i = 0; i < num_found; i++)
         {
-            LOG(VERBOSE, "SSID: %s, RSSI: %d, channel: %d"
+            LOG(VERBOSE, "SSID:%s, RSSI:%d, channel:%d"
                 , ssidScanResults_[i].ssid
                 , ssidScanResults_[i].rssi, ssidScanResults_[i].primary);
         }
@@ -1726,6 +1766,7 @@ static void sntp_update_received(struct timeval *tv)
     time_t new_time = tv->tv_sec;
     LOG(INFO, "[SNTP] Received time update, new localtime: %s"
       , ctime(&new_time));
+    Singleton<Esp32WiFiManager>::instance()->sync_time(new_time);
 }
 #endif // IDF v3.3+
 
