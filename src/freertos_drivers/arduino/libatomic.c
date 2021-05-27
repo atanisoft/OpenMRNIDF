@@ -87,7 +87,7 @@ uint8_t __atomic_fetch_and_1(uint8_t *ptr, uint8_t val, int memorder)
     return ret;
 }
 
-#elif defined(CONFIG_IDF_TARGET_ESP32S2) || (ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,4,0) && defined(CONFIG_IDF_TARGET_ESP32C3))
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
 #include "freertos/portmacro.h"
 // Currently arduino-esp32 2.0.0-alpha1 is picking up a version of ESP-IDF v4.4
 // which does not have the fix for https://github.com/espressif/esp-idf/issues/6463
