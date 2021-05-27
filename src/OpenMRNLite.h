@@ -38,13 +38,9 @@
 
 #include <Arduino.h>
 
-#include "openmrn_features.h"
-
-#include "CDIHelper.hxx"
 #include "freertos_drivers/arduino/Can.hxx"
 #include "freertos_drivers/arduino/WifiDefs.hxx"
 #include "openlcb/SimpleStack.hxx"
-#include "utils/constants.hxx"
 #include "utils/FileUtils.hxx"
 #include "utils/GridConnectHub.hxx"
 #include "utils/logging.h"
@@ -52,34 +48,72 @@
 
 #if defined(ESP32)
 
+#include <esp_idf_version.h>
 #include <esp_task.h>
 #include <esp_task_wdt.h>
 
-// Include the ESP-IDF based GPIO support.
+namespace openmrn_arduino
+{
+
+/// Default stack size to use for all OpenMRN tasks on the ESP32 platform.
+constexpr uint32_t OPENMRN_STACK_SIZE = 4096L;
+
+/// Default thread priority for any OpenMRN owned tasks on the ESP32 platform.
+/// Note: This is set to one priority level lower than the TCP/IP task uses on
+/// the ESP32.
+constexpr UBaseType_t OPENMRN_TASK_PRIORITY = ESP_TASK_TCPIP_PRIO - 1;
+
+} // namespace openmrn_arduino
+
 #include "freertos_drivers/esp32/Esp32Gpio.hxx"
-#include "freertos_drivers/esp32/Esp32HardwareCanAdapter.hxx"
-#include "freertos_drivers/esp32/Esp32HardwareSerialAdapter.hxx"
+#include "freertos_drivers/esp32/Esp32SocInfo.hxx"
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
+
+// If we are using ESP-IDF v4.3 (or later) enable the usage of the TWAI device
+// which allows usage of the filesystem based CAN interface methods.
 #include "freertos_drivers/esp32/Esp32HardwareTwai.hxx"
+#define HAVE_CAN_FS_DEVICE
+
+// The ESP-IDF VFS layer has an optional wrapper around the select() interface
+// when disabled we can not use select() for the CAN/TWAI driver. Normally this
+// is enabled for arduino-esp32.
+#if CONFIG_VFS_SUPPORT_SELECT
+#define HAVE_CAN_FS_SELECT
+#endif
+
+// If we are using ESP-IDF v4.3 (or later) enable the usage of the Esp32WS2812
+// RMT API.
+#include "freertos_drivers/esp32/Esp32WS2812.hxx"
+
+#endif // IDF v4.3+
+
+#if !defined(CONFIG_IDF_TARGET_ESP32S2) && \
+    !defined(CONFIG_IDF_TARGET_ESP32S3) && \
+    !defined(CONFIG_IDF_TARGET_ESP32C3)
+// Note: This code is considered deprecated in favor of the TWAI interface
+// which exposes a select() and fnctl() interface.
+// Support for this will be removed in the future.
+#include "freertos_drivers/esp32/Esp32HardwareCanAdapter.hxx"
+#endif // NOT ESP32-S2,ESP32-S3,ESP32-C3
+
+#include "freertos_drivers/esp32/Esp32HardwareSerialAdapter.hxx"
 #include "freertos_drivers/esp32/Esp32WiFiManager.hxx"
 
 // On the ESP32 we have persistent file system access so enable
 // dynamic CDI.xml generation support
-#define HAVE_FILESYSTEM 1
+#define HAVE_FILESYSTEM
 
-#else
-
-// Include generic Arduino API compatible GPIO pin support.
-#include "freertos_drivers/arduino/ArduinoGpio.hxx"
 #endif // ESP32
 
 #ifdef ARDUINO_ARCH_STM32
 
+#include "freertos_drivers/arduino/ArduinoGpio.hxx"
 #include "freertos_drivers/stm32/Stm32Can.hxx"
 
 #endif
 
-namespace openmrn_arduino
-{
+namespace openmrn_arduino {
 
 /// Bridge class that connects an Arduino API style serial port (sending CAN
 /// frames via gridconnect format) to the OpenMRN core stack. This can be
@@ -356,10 +390,7 @@ public:
         }
     }
 
-// For single threaded platforms (including ESP32-S2) do not expose the support
-// for spawning a seperate thread for the OpenMRN executor.
-#if !defined(OPENMRN_FEATURE_SINGLE_THREADED) && \
-    !defined(CONFIG_IDF_TARGET_ESP32S2)
+#ifndef OPENMRN_FEATURE_SINGLE_THREADED
     /// Entry point for the executor thread when @ref start_executor_thread is
     /// called with donate_current_thread set to false.
     static void thread_entry(void *arg)
@@ -395,30 +426,25 @@ public:
     void start_executor_thread()
     {
         haveExecutorThread_ = true;
-// On the ESP32 create a task on the PRO_CPU (core 0) which is typically not in
-// active use by the arduino-esp32 stack. The arduino-esp32 "app_main" starts
-// executing on the PRO_CPU but creates a "loopTask" which runs from the
-// APP_CPU (core 1), this loopTask is responsible for executing setup() and
-// loop() from the user code.
-//
-// For the non-ESP32 platforms this will invoke the Executor::start_thread()
-// method.
 #ifdef ESP32
 #if CONFIG_TASK_WDT_CHECK_IDLE_TASK_CPU0
         // Remove IDLE0 task watchdog, because the openmrn task sometimes
         // uses 100% cpu and it is pinned to CPU 0.
         disableCore0WDT();
 #endif // CONFIG_TASK_WDT_CHECK_IDLE_TASK_CPU0
-        xTaskCreatePinnedToCore(
-            thread_entry, "OpenMRN", config_arduino_openmrn_stack_size(), this,
-            config_arduino_openmrn_task_priority(), nullptr, PRO_CPU_NUM);
-#else
+        xTaskCreatePinnedToCore(&thread_entry         // entry point
+                              , "OpenMRN"             // task name
+                              , OPENMRN_STACK_SIZE    // stack size
+                              , this                  // entry point arg
+                              , OPENMRN_TASK_PRIORITY // priority
+                              , nullptr               // task handle
+                              , PRO_CPU_NUM);         // cpu core
+#else // NOT ESP32
         stack_->executor()->start_thread(
-            "OpenMRN", config_arduino_openmrn_task_priority(),
-            config_arduino_openmrn_stack_size());
+            "OpenMRN", 0 /* default priority*/, 0 /* default stack size */);
 #endif // ESP32
     }
-#endif // !OPENMRN_FEATURE_SINGLE_THREADED && !CONFIG_IDF_TARGET_ESP32S2
+#endif // OPENMRN_FEATURE_SINGLE_THREADED
 
     /// Adds a serial port to the stack speaking the gridconnect protocol, for
     /// example to do a USB connection to a computer. This is the protocol that
@@ -439,25 +465,6 @@ public:
             new SerialBridge<SerialType>(port, stack()->can_hub()));
     }
 
-#ifdef OPENMRN_FEATURE_EXECUTOR_SELECT
-    /// Adds a hardware CAN port to the stack with select-based asynchronous
-    /// driver API.
-    ///
-    /// Example (ESP32):
-    /// Esp32Twai twai("/dev/twai", GPIO_NUM_5, GPIO_NUM_4);
-    /// void setup() {
-    ///   ...
-    ///   twai.hw_init();
-    ///   openmrn.begin();
-    ///   openmrn.add_can_port_select("/dev/twai/twai0");
-    /// }
-    /// @param device path to open for the CAN device.
-    void add_can_port_select(const char *device)
-    {
-        stack()->add_can_port_select(device);
-    }
-#endif // OPENMRN_FEATURE_EXECUTOR_SELECT
-
     /// Adds a hardware CAN port to the stack. If multiple ports are added,
     /// OpenMRN will be forwarding traffic frames between them: the simplest
     /// CAN-USB sketch just adds the serial port connecting to the computer and
@@ -466,6 +473,40 @@ public:
     {
         loopMembers_.push_back(new CanBridge(port, stack()->can_hub()));
     }
+
+#if defined(HAVE_CAN_FS_DEVICE)
+    /// Adds a CAN bus port with synchronous driver API.
+    void add_can_port_blocking(const char *device)
+    {
+        stack_->add_can_port_blocking(device);
+    }
+
+    /// Adds a CAN bus port with asynchronous driver API.
+    void add_can_port_async(const char *device)
+    {
+        stack_->add_can_port_async(device);
+    }
+
+#if defined(HAVE_CAN_FS_SELECT)
+    /// Adds a CAN bus port with select-based asynchronous driver API.
+    ///
+    /// NOTE: Be sure to call @ref start_executor_thread in the setup() method.
+    void add_can_port_select(const char *device)
+    {
+        stack_->add_can_port_select(device);
+    }
+
+    /// Adds a CAN bus port with select-based asynchronous driver API.
+    /// @param fd file descriptor to add to can hub
+    /// @param on_error Notifiable to wakeup on error
+    ///
+    /// NOTE: Be sure to call @ref start_executor_thread in the setup() method.
+    void add_can_port_select(int fd, Notifiable *on_error = nullptr)
+    {
+        stack_->add_can_port_select(fd, on_error);
+    }
+#endif // HAVE_CAN_FS_SELECT
+#endif // HAVE_CAN_FS_DEVICE
 
 #if defined(HAVE_FILESYSTEM)
     /// Creates the XML representation of the configuration structure and saves
@@ -498,16 +539,10 @@ private:
     /// Callback from the loop() method. Internally called.
     void run() override
     {
-// If we are running on a platform where we can have a dedicated executor
-// thread, check if it has been created and exit early if it has.
-#if !defined(OPENMRN_FEATURE_SINGLE_THREADED) && \
-    !defined(CONFIG_IDF_TARGET_ESP32S2)
-        if (haveExecutorThread_)
+        if (!haveExecutorThread_)
         {
-            return;
+            stack_->executor()->loop_some();
         }
-#endif
-        stack_->executor()->loop_some();
     }
 
     /// Storage space for the OpenLCB stack. Will be constructed in init().
@@ -516,11 +551,8 @@ private:
     /// List of objects we need to call in each loop iteration.
     vector<Executable *> loopMembers_{{this}};
 
-#if !defined(OPENMRN_FEATURE_SINGLE_THREADED) && \
-    !defined(CONFIG_IDF_TARGET_ESP32S2)
     /// True if there is a separate thread running the executor.
     bool haveExecutorThread_{false};
-#endif // !OPENMRN_FEATURE_SINGLE_THREADED && !CONFIG_IDF_TARGET_ESP32S2
 };
 
 } // namespace openmrn_arduino

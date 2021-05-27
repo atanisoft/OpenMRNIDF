@@ -28,10 +28,6 @@ idf_component_register(SRC_DIRS "${SOURCE_DIRS}"
 
 target_compile_options(${COMPONENT_LIB} PUBLIC -DESP32)
 
-if(CONFIG_IDF_TARGET_ESP32)
-target_compile_options(${COMPONENT_LIB} PUBLIC -DLOCKED_LOGGING)
-endif()
-
 ###############################################################################
 # Silence a few warnings for various files to reduce compilation noise
 ###############################################################################
@@ -46,10 +42,13 @@ set_source_files_properties(src/executor/Timer.cpp PROPERTIES COMPILE_FLAGS -Wno
 set_source_files_properties(src/freertos_drivers/arduino/CpuLoad.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/freertos_drivers/esp32/Esp32WiFiManager.cpp PROPERTIES COMPILE_FLAGS
     "-Wno-ignored-qualifiers -DESP32_WIFIMGR_SOCKETPARAMS_LOG_LEVEL=VERBOSE -DESP32_WIFIMGR_MDNS_LOOKUP_LOG_LEVEL=VERBOSE")
+set_source_files_properties(src/freertos_drivers/esp32/Esp32WS2812.cpp PROPERTIES COMPILE_FLAGS -Wno-missing-field-initializers)
+set_source_files_properties(src/freertos_drivers/esp32/Esp32HardwareTwai.cpp PROPERTIES COMPILE_FLAGS "-Wno-class-memaccess")
 set_source_files_properties(src/openlcb/AliasAllocator.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/openlcb/BroadcastTime.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/openlcb/BroadcastTimeClient.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/openlcb/BroadcastTimeServer.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
+set_source_files_properties(src/openlcb/BulkAliasAllocator.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/openlcb/ConfigEntry.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/openlcb/ConfigUpdateFlow.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/openlcb/DccAccyProducer.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
@@ -87,4 +86,3 @@ set_source_files_properties(src/utils/GridConnectHub.cpp PROPERTIES COMPILE_FLAG
 set_source_files_properties(src/utils/HubDevice.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/utils/HubDeviceSelect.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/utils/SocketClient.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
-set_source_files_properties(src/utils/socket_listener.cpp PROPERTIES COMPILE_FLAGS -DSOCKET_LISTENER_CONNECT_LOG_LEVEL=VERBOSE)

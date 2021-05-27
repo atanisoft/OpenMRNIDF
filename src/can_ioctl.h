@@ -35,10 +35,10 @@
 #define _FREERTOS_CAN_IOCTL_H_
 
 #include <stdint.h>
-#ifdef ESP32
-#include "stropts.h"
-#else
+#ifdef __FreeRTOS__
 #include "freertos/stropts.h"
+#elif defined(ESP32)
+#include "stropts.h"
 #endif
 
 #if defined (__cplusplus)

@@ -36,7 +36,7 @@
 
 #include "openmrn_features.h"
 
-#if OPENMRN_FEATURE_DEVTAB
+#ifdef OPENMRN_FEATURE_DEVTAB
 
 #include <sys/select.h>
 

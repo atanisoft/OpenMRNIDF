@@ -55,8 +55,26 @@
 #endif
 
 #ifdef ESP32
+#include "sdkconfig.h"
+
+#ifdef CONFIG_VFS_SUPPORT_TERMIOS
+// remove defines added by arduino-esp32 core/esp32/binary.h which are
+// duplicated in sys/termios.h which may be included by esp_vfs.h
+#undef B110
+#undef B1000000
+#endif // CONFIG_VFS_SUPPORT_TERMIOS
+
 #include <esp_vfs.h>
-#endif
+#include <esp_idf_version.h>
+
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,0,0)
+// SemaphoreHandle_t is defined by inclusion of esp_vfs.h so no additional
+// includes are necessary.
+/// Alias for the internal data type used by ESP-IDF select() calls.
+typedef SemaphoreHandle_t * esp_vfs_select_sem_t;
+#endif // IDF v3.x
+
+#endif // ESP32
 
 /// Signal handler that does nothing. @param sig ignored.
 void empty_signal_handler(int sig);
@@ -92,7 +110,8 @@ public:
         thread_ = os_thread_self();
 #ifdef ESP32
         esp_allocate_vfs_fd();
-#elif OPENMRN_FEATURE_DEVICE_SELECT
+#endif
+#if OPENMRN_FEATURE_DEVICE_SELECT
         Device::select_insert(&selectInfo_);
 #elif OPENMRN_HAVE_PSELECT
         // Blocks SIGUSR1 in the signal mask of the current thread.
@@ -193,8 +212,8 @@ private:
     void esp_wakeup();
     void esp_wakeup_from_isr();
 public:
-    void esp_start_select(esp_vfs_select_sem_t signal_sem, fd_set *readfds,
-        fd_set *writefds, fd_set *exceptfds);
+    void esp_start_select(fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+                          esp_vfs_select_sem_t signal_sem);
     void esp_end_select();
 
 private:
@@ -205,28 +224,6 @@ private:
     /// ESP32 early from the select() call.
     esp_vfs_select_sem_t espSem_;
 
-    /// Flag to indicate that @ref espSem_ is valid or not.
-    /// Protected by Atomic *this.
-    bool semValid_{false};
-
-    /// FD set provided by the ESP32 VFS layer to use when waking up early from
-    /// select, this tracks which FDs are ready for read().
-    fd_set *readFds_;
-
-    /// Copy of the initial state of the read FD set provided by the ESP32 VFS
-    /// layer. This is used for checking if we need to set the bit for the FD
-    /// when waking up early from select().
-    fd_set origReadFds_;
-
-    /// FD set provided by the ESP32 VFS layer to use when waking up early from
-    /// select, this tracks which FDs are ready for write().
-    fd_set *writeFds_;
-
-    /// Copy of the initial state of the write FD set provided by the ESP32 VFS
-    /// layer. This is used for checking if we need to set the bit for the FD
-    /// when waking up early from select().
-    fd_set origWriteFds_;
-
     /// FD set provided by the ESP32 VFS layer to use when waking up early from
     /// select, this tracks which FDs have an error (or exception).
     fd_set *exceptFds_;
@@ -234,9 +231,15 @@ private:
     /// Copy of the initial state of the except FD set provided by the ESP32 VFS
     /// layer. This is used for checking if we need to set the bit for the FD
     /// when waking up early from select().
-    fd_set origExceptFds_;
+    fd_set exceptFdsOrig_;
+
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,0,0)
+    /// Semaphore for waking up LwIP select.
+    void* lwipSem_{nullptr};
+#endif // IDF < v4.0
 
 #endif // ESP32
+
 #if OPENMRN_HAVE_PSELECT
     /** This signal is used for the wakeup kill in a pthreads OS. */
     static const int WAKEUP_SIG = SIGUSR1;

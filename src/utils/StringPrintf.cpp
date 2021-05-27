@@ -36,7 +36,7 @@
 
 std::string StringPrintf(const char *format, ...)
 {
-#if defined(__FreeRTOS__) || defined(ESP32)
+#ifdef __FreeRTOS__
     static const int kBufSize = 64;
 #else
     static const int kBufSize = 1000;

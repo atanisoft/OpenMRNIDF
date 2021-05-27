@@ -88,9 +88,9 @@ int OSSelectWakeup::select(int nfds, fd_set *readfds,
     }
 #endif //ESP32
     struct timeval timeout;
-    // divide deadline_nsec by 1000 to prevent overflow on esp32
-    timeout.tv_sec = (deadline_nsec / 1000) / 1000000ULL;
-    timeout.tv_usec = (deadline_nsec / 1000) % 1000000ULL;
+    // divide in two steps to avoid overflow on ESP32
+    timeout.tv_sec = (deadline_nsec / 1000) / 1000000LL;
+    timeout.tv_usec = (deadline_nsec / 1000) % 1000000LL;
     int ret =
         ::select(nfds, readfds, writefds, exceptfds, &timeout);
 #elif !defined(OPENMRN_FEATURE_SINGLE_THREADED)
@@ -129,51 +129,78 @@ static pthread_key_t select_wakeup_key;
 /// all VFS APIs we implement.
 static constexpr int WAKEUP_VFS_FD = 0;
 
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,0,0)
+extern "C"
+{
+    void *sys_thread_sem_get();
+    void sys_sem_signal(void *);
+    void sys_sem_signal_isr(void *);
+}
+#endif // NOT IDF v4.0+
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
 /// This function is called by the ESP32's select implementation. It is passed
 /// in as a function pointer to the VFS API.
 /// @param nfds see standard select API
 /// @param readfds see standard select API
 /// @param writefds see standard select API
 /// @param exceptfds see standard select API
-/// @param signal_sem is the semaphore object to trigger when the select has
-/// completed.
+/// @param signal_sem is the semaphore object to trigger when the select should
+/// wake up early.
 /// @param end_select_args are the arguments to pass to end_select upon wakeup.
 static esp_err_t esp_start_select(int nfds, fd_set *readfds, fd_set *writefds,
     fd_set *exceptfds, esp_vfs_select_sem_t signal_sem, void **end_select_args)
+#else // NOT IDF v4.0+
+/// This function is called by the ESP32's select implementation. It is passed
+/// in as a function pointer to the VFS API.
+/// @param nfds see standard select API
+/// @param readfds see standard select API
+/// @param writefds see standard select API
+/// @param exceptfds see standard select API
+/// @param signal_sem if non-NULL, the select can be woken up by notifying this
+/// semaphore. If NULL, the select can be woken up by notifying the LWIP
+/// semaphore. By the API contract this pointer needs to be passed into
+/// esp_vfs_select_triggered.
+static esp_err_t esp_start_select(int nfds, fd_set *readfds, fd_set *writefds,
+    fd_set *exceptfds, esp_vfs_select_sem_t signal_sem)
+#endif // IDF v4.0+
 {
     OSSelectWakeup *parent =
         (OSSelectWakeup *)pthread_getspecific(select_wakeup_key);
     HASSERT(parent);
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
     LOG(VERBOSE, "esp start select %p (thr %p parent %p)", signal_sem.sem
       , os_thread_self(), parent);
+#else // NOT IDF v4.0+
+    LOG(VERBOSE, "esp start select %p  (thr %p parent %p)", signal_sem
+      , os_thread_self(), parent);
+#endif // IDF v4.0+
+
+    // Check if there is at least one FD and our VFS FD is included in one of
+    // the sets before calling esp_start_select.
     if (nfds >= 1 &&
         (FD_ISSET(WAKEUP_VFS_FD, readfds) ||
          FD_ISSET(WAKEUP_VFS_FD, writefds) ||
          FD_ISSET(WAKEUP_VFS_FD, exceptfds)))
     {
-        parent->esp_start_select(signal_sem, readfds, writefds, exceptfds);
+        parent->esp_start_select(readfds, writefds, exceptfds, signal_sem);
     }
     return ESP_OK;
 }
 
-/// This function is called by the ESP32's select implementation.
-/// @param signal_sem is the semaphore container provided by the VFS layer that
-/// can be used to wake up the select() call early.
-void OSSelectWakeup::esp_start_select(esp_vfs_select_sem_t signal_sem,
-    fd_set *readfds, fd_set *writefds, fd_set *exceptfds)
-{
-    AtomicHolder h(this);
-    espSem_ = signal_sem;
-    readFds_ = readfds;
-    origReadFds_ = *readfds;
-    writeFds_ = writefds;
-    origWriteFds_ = *writefds;
-    exceptFds_ = exceptfds;
-    origExceptFds_ = *exceptfds;
-    semValid_ = true;
-}
-
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
+/// This function is called inline from the ESP32's select implementation. It is
+/// passed in as a function pointer to the VFS API.
+///
+/// @param arg is the value that was provided as part of esp_start_select, this
+/// is not used today.
+/// @return always returns ESP_OK as this is a no-op.
 static esp_err_t esp_end_select(void *arg)
+#else // NOT IDF v4.0+
+/// This function is called inline from the ESP32's select implementation. It is
+/// passed in as a function pointer to the VFS API.
+static void esp_end_select()
+#endif // IDF v4.0+
 {
     OSSelectWakeup *parent =
         (OSSelectWakeup *)pthread_getspecific(select_wakeup_key);
@@ -181,25 +208,35 @@ static esp_err_t esp_end_select(void *arg)
     LOG(VERBOSE, "esp end select (thr %p parent %p)", os_thread_self()
       , parent);
     parent->esp_end_select();
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
     return ESP_OK;
+#endif // IDF v4.0+
 }
 
+/// This function is called by the ESP32's select implementation.
+/// @param signal_sem is the semaphore container provided by the VFS layer that
+/// can be used to wake up the select() call early.
+void OSSelectWakeup::esp_start_select(fd_set *readfds, fd_set *writefds,
+    fd_set *exceptfds, esp_vfs_select_sem_t signal_sem)
+{
+    AtomicHolder h(this);
+    espSem_ = signal_sem;
+    // store the fd_set for the except set since this is guaranteed to be set
+    // in OSSelectWakeup::select. Other fd_sets are not guaranteed or necessary
+    // to be stored/checked here.
+    exceptFds_ = exceptfds;
+    exceptFdsOrig_ = *exceptfds;
+    FD_ZERO(exceptFds_);
+}
+
+/// This function marks the stored semaphore as invalid which indicates no
+/// active select() call we are interested in.
 void OSSelectWakeup::esp_end_select()
 {
     AtomicHolder h(this);
-    semValid_ = false;
-}
-
-/// This function is called by the ESP32 VFS layer when a file is opened under
-/// the registered VFS root.
-/// @param path see standard open API.
-/// @param flags see standard open API.
-/// @param mode see standard open API.
-/// @return the FD for the opened file.
-static int esp_wakeup_open(const char * path, int flags, int mode)
-{
-    // This virtual FS has only one fd, 0.
-    return WAKEUP_VFS_FD;
+    // zero out the copy so we don't unintentionally wake up when the semaphore
+    // is no longer valid.
+    FD_ZERO(&exceptFdsOrig_);
 }
 
 /// This function will trigger the ESP32 to wake up from any pending select()
@@ -207,23 +244,40 @@ static int esp_wakeup_open(const char * path, int flags, int mode)
 void OSSelectWakeup::esp_wakeup()
 {
     AtomicHolder h(this);
-    if (semValid_)
+
+    // If our VFS FD is not set in the except fd_set we can exit early.
+    if (!FD_ISSET(WAKEUP_VFS_FD, &exceptFdsOrig_))
     {
-        LOG(VERBOSE, "wakeup es %p %u", espSem_.sem, *(unsigned*)espSem_.sem);
-        if (FD_ISSET(vfsFd_, &origReadFds_))
-        {
-            FD_SET(vfsFd_, readFds_);
-        }
-        if (FD_ISSET(vfsFd_, &origWriteFds_))
-        {
-            FD_SET(vfsFd_, writeFds_);
-        }
-        if (FD_ISSET(vfsFd_, &origExceptFds_))
-        {
-            FD_SET(vfsFd_, exceptFds_);
-        }
+        return;
+    }
+
+    // Mark the VFS implementation FD for the wakeup call. Note that this
+    // should not use vfsFd_ since the fd_set will contain the VFS specific FD
+    // and not the system global FD.
+    FD_SET(WAKEUP_VFS_FD, exceptFds_);
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
+    LOG(VERBOSE, "wakeup es %p %u", espSem_.sem, *(unsigned*)espSem_.sem);
+    esp_vfs_select_triggered(espSem_);
+#else // IDF v3.x
+    LOG(VERBOSE, "wakeup es %p %u", espSem_, *(unsigned*)espSem_);
+    if (espSem_)
+    {
+        // Mark the VFS implementation FD for the wakeup call. Note that this
+        // should not use vfsFd_ since the fd_set will contain the VFS specific
+        // FD and not the system global FD.
         esp_vfs_select_triggered(espSem_);
     }
+    else
+    {
+        // Works around a bug in the implementation of
+        // esp_vfs_select_triggered, which internally calls
+        // sys_sem_signal(sys_thread_sem_get()); This is buggy because
+        // sys_thread_sem_get() will get the semaphore that belongs to the
+        // calling thread, not the target thread to wake up.
+        sys_sem_signal(lwipSem_);
+    }
+#endif // IDF >= v4.0
 }
 
 /// This function will trigger the ESP32 to wake up from any pending select()
@@ -231,35 +285,53 @@ void OSSelectWakeup::esp_wakeup()
 void OSSelectWakeup::esp_wakeup_from_isr()
 {
     AtomicHolder h(this);
-    if (semValid_)
+    BaseType_t woken = pdFALSE;
+
+    // If our VFS FD is not set in the except fd_set we can exit early.
+    if (!FD_ISSET(WAKEUP_VFS_FD, &exceptFdsOrig_))
     {
-        BaseType_t woken = pdFALSE;
-        if (FD_ISSET(vfsFd_, &origReadFds_))
-        {
-            FD_SET(vfsFd_, readFds_);
-        }
-        if (FD_ISSET(vfsFd_, &origWriteFds_))
-        {
-            FD_SET(vfsFd_, writeFds_);
-        }
-        if (FD_ISSET(vfsFd_, &origExceptFds_))
-        {
-            FD_SET(vfsFd_, exceptFds_);
-        }
+        return;
+    }
+
+    // Mark the VFS implementation FD for the wakeup call. Note that this
+    // should not use vfsFd_ since the fd_set will contain the VFS specific FD
+    // and not the system global FD.
+    FD_SET(WAKEUP_VFS_FD, exceptFds_);
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,0,0)
+    esp_vfs_select_triggered_isr(espSem_, &woken);
+#else // IDF v3.x
+    if (espSem_)
+    {
         esp_vfs_select_triggered_isr(espSem_, &woken);
-        if (woken == pdTRUE)
-        {
-            portYIELD_FROM_ISR();
-        }
+    }
+    else
+    {
+        // Works around a bug in the implementation of
+        // esp_vfs_select_triggered, which internally calls
+        // sys_sem_signal(sys_thread_sem_get()); This is buggy because
+        // sys_thread_sem_get() will get the semaphore that belongs to the
+        // calling thread, not the target thread to wake up.
+        sys_sem_signal_isr(lwipSem_);
+    }
+#endif // IDF >= v4.0
+
+    if (woken == pdTRUE)
+    {
+        portYIELD_FROM_ISR();
     }
 }
 
-/// Registers the VFS driver that is used for waking up the ESP32 from a call
-/// to select() within the Executor.
+static int esp_wakeup_open(const char * path, int flags, int mode)
+{
+    // This virtual FS has only one fd, 0.
+    return WAKEUP_VFS_FD;
+}
+
 static void esp_vfs_init()
 {
     esp_vfs_t vfs;
-    bzero(&vfs, sizeof(esp_vfs_t));
+    memset(&vfs, 0, sizeof(vfs));
     vfs.flags = ESP_VFS_FLAG_DEFAULT;
     vfs.start_select = esp_start_select;
     vfs.end_select = esp_end_select;
@@ -268,13 +340,12 @@ static void esp_vfs_init()
     HASSERT(0 == pthread_key_create(&select_wakeup_key, nullptr));
 }
 
-/// Allocates an FD from the VFS layer to this thread for waking it up from
-/// select().
-///
-/// Note: this will register the VFS driver if this is the first time this
-/// function has been called.
 void OSSelectWakeup::esp_allocate_vfs_fd()
 {
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,0,0)
+    lwipSem_ = sys_thread_sem_get();
+#endif // IDF < v4.0
+
     HASSERT(0 == pthread_once(&vfs_init_once, &esp_vfs_init));
     vfsFd_ = ::open("/dev/wakeup/0", 0, 0);
     HASSERT(vfsFd_ >= 0);
@@ -283,9 +354,6 @@ void OSSelectWakeup::esp_allocate_vfs_fd()
         os_thread_self(), pthread_getspecific(select_wakeup_key));
 }
 
-/// Releases an FD previously allocated by esp_allocate_vfs_fd.
-/// Note: this is currently no-op since there is only one FD allocated for all
-/// instances of OSSelectWakeup.
 void OSSelectWakeup::esp_deallocate_vfs_fd()
 {
     if (vfsFd_ >= 0)

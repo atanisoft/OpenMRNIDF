@@ -35,18 +35,24 @@
 #ifndef _FREERTOS_DRIVERS_ESP32_ESP32WIFIMGR_HXX_
 #define _FREERTOS_DRIVERS_ESP32_ESP32WIFIMGR_HXX_
 
-#include "freertos_includes.h"
-#include "freertos_drivers/arduino/WifiDefs.hxx"
 #include "freertos_drivers/esp32/Esp32WiFiConfiguration.hxx"
+#include "executor/Executor.hxx"
+#include "openlcb/ConfigRepresentation.hxx"
+#include "openlcb/ConfiguredTcpConnection.hxx"
 #include "utils/ConfigUpdateListener.hxx"
+#include "utils/GcTcpHub.hxx"
 #include "utils/macros.h"
-#include "utils/Singleton.hxx"
 
-#include <esp_event.h>
-#include <esp_netif.h>
-#include <esp_wifi_types.h>
 #include <freertos/event_groups.h>
-#include <mutex>
+#include <esp_idf_version.h>
+#include <esp_event.h>
+#include <esp_wifi_types.h>
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
+#include <esp_netif.h>
+#else
+#include <tcpip_adapter.h>
+#endif // IDF v4.1+
 
 namespace openlcb
 {
@@ -58,83 +64,62 @@ class SocketClient;
 
 namespace openmrn_arduino
 {
-// Attempt to use __has_include to determine the ESP-IDF version that is being
-// used. If this is not available we will default to ESP-IDF v3.x.
-#if defined(__has_include)
 
-#if __has_include(<esp_idf_version.h>)
-#include <esp_idf_version.h>
-#else
-#include <esp_system.h>
-#endif // __has_include esp_idf_version.h
+/// ESP32 network interfaces.
+///
+/// At this time only the Station and SoftAP interfaces are supported. There
+/// are no plans to support the Ethernet interface at this time.
+typedef enum : uint8_t
+{
+    /// This is used for the Station WiFi interface.
+    STATION_INTERFACE = 0,
 
-#endif // defined __has_include
+    /// This is used for the SoftAP WiFi interface.
+    SOFTAP_INTERFACE,
 
-// If we do not have the ESP_IDF_VERSION we are likely running on IDF v3.2 or
-// earlier. These two defines will cause the IDF v3.2 behavior to be used by
-// default when not defined.
-#ifndef ESP_IDF_VERSION
-#define ESP_IDF_VERSION 0
-#endif
-
-#ifndef ESP_IDF_VERSION_VAL
-#define ESP_IDF_VERSION_VAL(a,b,c) 1
-#endif
-
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
-#include <esp_netif.h>
-
-/// ESP-IDF version neutral type definition for a static IP declaration. This
-/// includes the interface IP address, gateway and netmas.
-typedef esp_netif_ip_info_t ESP32_ADAPTER_IP_INFO_TYPE;
-
-#else // not IDF v4.1+
-#include <tcpip_adapter.h>
-
-/// ESP-IDF version neutral type definition for a static IP declaration. This
-/// includes the interface IP address, gateway and netmas.
-typedef tcpip_adapter_ip_info_t ESP32_ADAPTER_IP_INFO_TYPE;
-#endif // IDF v4.1+
+    /// This is the maximum supported WiFi interfaces of the ESP32 and is not
+    /// a valid network interface for user code.
+    MAX_NETWORK_INTERFACES
+} esp_network_interface_t;
 
 /// Callback function definition for the network up events.
 ///
 /// The first parameter is the interface that is up and read to use.
 /// The second is the IP address for the interface in network byte order.
 ///
-/// NOTE: The callback will be invoked for ESP_IF_WIFI_AP (SoftAP) upon start
-/// and ESP_IF_WIFI_STA (station) only after the IP address has been received.
+/// NOTE: The callback will be invoked for SOFTAP_INTERFACE (SoftAP) upon start
+/// and STATION_INTERFACE (station) only after the IP address has been received.
 /// The callback will be called multiple times if both SoftAP and Station are
 /// enabled.
-typedef std::function<void(esp_interface_t
-                         , uint32_t)> esp32_network_up_callback_t;
+typedef std::function<void(esp_network_interface_t
+                         , uint32_t)> esp_network_up_callback_t;
 
 /// Callback function definition for the network down events.
 ///
-/// The parameter is the interface that is down.
+/// The first parameter is the interface that is down.
 ///
-/// NOTE: The callback will be invoked for ESP_IF_WIFI_AP (SoftAP) when the
-/// interface is stopped, for ESP_IF_WIFI_STA (station) it will be called when
+/// NOTE: The callback will be invoked for SOFTAP_INTERFACE (SoftAP) when the
+/// interface is stopped, for STATION_INTERFACE (station) it will be called when
 /// the IP address has been lost or connection to the AP has been lost.
-typedef std::function<void(esp_interface_t)> esp32_network_down_callback_t;
+typedef std::function<void(esp_network_interface_t)> esp_network_down_callback_t;
 
 /// Callback function definition for the network is initializing.
 ///
-/// The parameter is the interface that is initializing.
+/// The first parameter is the interface that is initializing.
 ///
-/// NOTE: This will be called for ESP_IF_WIFI_STA only. It will be called for
+/// NOTE: This will be called for STATION_INTERFACE only. It will be called for
 /// initial startup and reconnect events.
-typedef std::function<void(esp_interface_t)> esp32_network_init_callback_t;
+typedef std::function<void(esp_network_interface_t)> esp_network_init_callback_t;
 
 /// Callback function definition for network time synchronization.
 ///
 /// The parameter is the standard time_t structure containing the new time.
-typedef std::function<void(time_t)> esp32_network_time_callback_t;
+typedef std::function<void(time_t)> esp_network_time_callback_t;
 
 /// This class provides a simple way for ESP32 nodes to manage the WiFi and
 /// mDNS systems of the ESP32, the node being a hub and connecting to an
 /// uplink node to participate in the CAN bus.
 class Esp32WiFiManager : public DefaultConfigUpdateListener
-                       , public Singleton<Esp32WiFiManager>
 {
 public:
     /// Constructor.
@@ -145,78 +130,62 @@ public:
     /// started after the initial loading of the CDI which occurs only after
     /// the application code calls OpenMRN::begin().
     ///
-    /// @param stack is the SimpleStackBase for this node. NOTE: Must stay
-    /// alive forever.
-    /// @param cfg is the WiFiConfiguration instance used for this node. This
-    /// will be monitored for changes and the WiFi behavior altered accordingly.
-    /// @param wifi_mode is the WiFi operating mode. When set to WIFI_MODE_STA
-    /// the Esp32WiFiManager will attempt to connect to the provided WiFi SSID.
-    /// When the wifi_mode is WIFI_MODE_AP the Esp32WiFiManager will create an
-    /// AP with the provided SSID and PASSWORD. When the wifi_mode is
-    /// WIFI_MODE_APSTA the Esp32WiFiManager will connect to the provided WiFi
-    /// AP and create an AP with the SSID of "<hostname>" and the provided
-    /// password. Note, the password for the AP will not be used if
-    /// soft_ap_auth is set to WIFI_AUTH_OPEN (default).
-    /// @param hostname_prefix is the hostname prefix to use for this node,
-    /// the @ref NodeID will be appended to this value. The maximum length for
-    /// final hostname is 32 bytes.
     /// @param station_ssid is the WiFi AP to connect to.
     /// @param station_password is the password for the WiFi AP being connected
     /// to.
-    /// @param station_ip is the static IP configuration to use for the Station
-    /// WiFi connection. If not specified DHCP will be used instead.
-    /// @param primary_dns_server is the primary DNS server to use when a
-    /// static IP address is being used. If left as the default (ip_addr_any)
-    /// the Esp32WiFiManager will use 8.8.8.8 if using a static IP address.
-    /// @param soft_ap_name will be used as the name for the SoftAP. If null
-    /// the hostname will be used as the SoftAP name.
-    /// @param soft_ap_password will be used as the password for the SoftAP,
-    /// if null no authentication will be required.
-    /// @param soft_ap_channel is the WiFi channel to use for the SoftAP.
-    /// @param softap_ip is the static IP configuration for the SoftAP, when
-    /// not specified the SoftAP will have an IP address of 192.168.4.1.
-    /// @param sntp_server is the SNTP server to poll for time updates.
-    /// @param timezone is the POSIX formatted TimeZone of the node.
-    /// @param sntp_enabled Enables SNTP synchronization.
-    Esp32WiFiManager(openlcb::SimpleStackBase *stack
+    /// @param stack is the SimpleCanStack for this node. Must stay alive
+    /// forever.
+    /// @param cfg is the WiFiConfiguration instance used for this node. This
+    /// will be monitored for changes and the WiFi behavior altered
+    /// accordingly.
+    /// @param wifi_mode is the WiFi operating mode, defaults to WIFI_MODE_STA.
+    /// When set to WIFI_MODE_STA the Esp32WiFiManager will attempt to connect
+    /// to the configured WiFi station_ssid. When wifi_mode is set to
+    /// WIFI_MODE_AP the Esp32WiFiManager will create a SoftAP with the
+    /// configured softap_ssid, softap_password, softap_channel, and
+    /// softap_auth_mode. When set to WIFI_MODE_APSTA both the SoftAP and
+    /// STATION interfaces will be enabled.
+    /// @param sntp_server is the SNTP server to poll for time updates, this
+    /// defaults to pool.ntp.org.
+    /// @param timezone is the POSIX formatted TimeZone of the node, this
+    /// defaults to UTC0.
+    /// @param sntp_enabled Enables SNTP synchronization, defaults to false.
+    /// @param hostname_prefix is the hostname prefix to use for this node.
+    /// The @ref NodeID will be appended to this value. The maximum length for
+    /// final hostname is 32 bytes.
+    /// @param softap_channel is the WiFi channel to use for the SoftAP.
+    /// @param softap_auth_mode is the authentication mode for the AP when
+    /// wifi_mode is set to WIFI_MODE_AP or WIFI_MODE_APSTA.
+    /// @param softap_ssid is the name for the SoftAP, if null the node
+    /// hostname will be used.
+    /// @param softap_password will be used as the password for the SoftAP,
+    /// if null and softap_auth_mode is not WIFI_AUTH_OPEN station_password
+    /// will be used.
+    Esp32WiFiManager(const char *station_ssid
+                   , const char *station_password
+                   , openlcb::SimpleStackBase *stack
                    , const WiFiConfiguration &cfg
                    , wifi_mode_t wifi_mode = WIFI_MODE_STA
                    , const char *hostname_prefix = "esp32_"
-                   , const char *station_ssid = WIFI_SSID
-                   , const char *station_password = WIFI_PASS
-                   , ESP32_ADAPTER_IP_INFO_TYPE *station_ip = nullptr
-                   , ip_addr_t primary_dns_server = ip_addr_any
-                   , const char *soft_ap_name = "esp32"
-                   , const char *soft_ap_password = "esp32"
-                   , uint8_t soft_ap_channel = 1
-                   , ESP32_ADAPTER_IP_INFO_TYPE *softap_ip = nullptr
                    , const char *sntp_server = "pool.ntp.org"
                    , const char *timezone = "UTC0"
-                   , bool sntp_enabled = false);
+                   , bool sntp_enabled = false
+                   , uint8_t softap_channel = 1
+                   , wifi_auth_mode_t softap_auth_mode = WIFI_AUTH_OPEN
+                   , const char *softap_ssid = nullptr
+                   , const char *softap_password = nullptr
+    );
 
     /// Destructor.
     ~Esp32WiFiManager();
 
-    /// Configures a @ref Gpio to be used for a visual indication of the
-    /// current WiFi status.
+    /// Configures a @ref Gpio to be used as a visual indication of the current
+    /// WiFi status.
     ///
     /// @param led is the @ref Gpio instance connected to the LED.
     void set_status_led(const Gpio *led = nullptr)
     {
-        wifiStatusLed_ = led;
-    }
-
-    /// Configures the default setting for enabling/disabling the uplink.
-    ///
-    /// NOTE: The persistent CDI settings will override this setting if called
-    /// before the configuration has been loaded.
-    void set_uplink_enabled(bool enabled = true)
-    {
-        enableUplink_ = enabled;
-        if (!enabled)
-        {
-            stop_uplink();
-        }
+        statusLed_ = led;
     }
 
     /// Updates the WiFiConfiguration settings used by this node.
@@ -246,9 +215,11 @@ public:
     /// @param event_base Determines the category of event being sent.
     /// @param event_id Specific event from the event_base being sent.
     /// @param event_data Data related to the event being sent, may be null.
+    ///
+    /// NOTE: This is not intended to be called by the user.
     static void process_idf_event(void *ctx, esp_event_base_t event_base
                                 , int32_t event_id, void *event_data);
-#else // not IDF v4.1+
+#else
     /// Processes an ESP-IDF WiFi event based on the event raised by the
     /// ESP-IDF event loop processor. This should be used when the
     /// Esp32WiFiManager is not managing the WiFi or MDNS systems so that
@@ -260,12 +231,18 @@ public:
     ///
     /// @param ctx context parameter (unused).
     /// @param event is the system_event_t raised by ESP-IDF.
+    ///
+    /// NOTE: This is not intended to be called by the user.
     static esp_err_t process_wifi_event(void *ctx, system_event_t *event);
-#endif // IDF v4.1+
+#endif
 
     /// If called, sets the ESP32 wifi stack to log verbose information to the
-    /// ESP32 serial port.
-    void enable_verbose_logging();
+    /// console.
+    void enable_verbose_logging()
+    {
+        verboseLogging_ = true;
+        enable_esp_wifi_logging();
+    }
 
     /// Starts a scan for available SSIDs.
     ///
@@ -298,34 +275,54 @@ public:
     /// @param service is the service name to remove from advertising.
     void mdns_unpublish(std::string service);
 
+    /// Forces the Esp32WiFiManager to wait until SSID connection completes.
+    ///
+    /// @param enable when true will force the Esp32WiFiManager to wait for
+    /// successful SSID connection (including IP assignemnt), when false and
+    /// the Esp32WiFiManager will not check the SSID connection process.
+    ///
+    /// The default behavior is to wait for SSID connection to complete when
+    /// the WiFi mode is WIFI_MODE_STA or WIFI_MODE_APSTA. When operating in
+    /// WIFI_MODE_APSTA mode the application may opt to present a configuration
+    /// portal to allow reconfiguration of the SSID.
+    void wait_for_ssid_connect(bool enable)
+    {
+        waitForStationConnect_ = enable;
+    }
+
+    /// Configures the WiFi maximum transmit power setting.
+    ///
+    /// @param power is the maximum transmit power in 0.25dBm units, range is
+    /// 8-84 (2-20dBm).
+    ///
+    /// NOTE: This should be called as early as possible, once the Station or
+    /// SoftAP has been started this setting will not be used.
+    void set_tx_power(uint8_t power)
+    {
+        HASSERT(power >= 8 && power <= 84);
+        wifiTXPower_ = power;
+    }
+
     /// Registers a callback for when the WiFi connection is up.
     ///
     /// @param callback The callback to invoke when the WiFi connection is
     /// up.
-    void register_network_up_callback(esp32_network_up_callback_t callback);
+    void register_network_up_callback(esp_network_up_callback_t callback);
 
     /// Registers a callback for when the WiFi connection is down.
     ///
     /// @param callback The callback to invoke when the WiFi connection is
     /// down.
-    void register_network_down_callback(
-        esp32_network_down_callback_t callback);
+    void register_network_down_callback(esp_network_down_callback_t callback);
 
     /// Registers a callback for when WiFi interfaces are being initialized.
     ///
-    /// @param callback the callback to invoke when the WiFi interface is
+    /// @param callback The callback to invoke when the WiFi interface is
     /// initializing.
     /// 
     /// NOTE: this will not be invoked for ESP_IF_WIFI_AP since there are no
     /// events raised between enabling the interface and when it is ready.
-    void register_network_init_callback(
-        esp32_network_init_callback_t callback);
-
-    /// Registers a callback for SNTP synchronization events.
-    ///
-    /// @param callback the callback to invoke when SNTP sync occurs.
-    void register_network_time_callback(
-        esp32_network_time_callback_t callback);
+    void register_network_init_callback(esp_network_init_callback_t callback);
 
     /// Time synchronization callback for SNTP.
     ///
@@ -334,8 +331,6 @@ public:
     /// NOTE: This is not intended to be called by the user.
     void sync_time(time_t now);
 
-    /// @return the configured SoftAP name.
-    std::string get_softap_ssid();
 private:
     /// Default constructor.
     Esp32WiFiManager();
@@ -385,12 +380,6 @@ private:
     /// Initializes the mDNS system if it hasn't already been initialized.
     void start_mdns_system();
 
-    /// Reconfigures the WiFi maximum TX power.
-    void reconfigure_wifi_max_tx_power();
-
-    /// Reconfigures the WiFi radio sleep mode.
-    void reconfigure_wifi_radio_sleep();
-
     /// Event handler called when the ESP32 Station interface has started.
     ///
     /// This will handle configuration of any static IP address, hostname, DNS
@@ -425,25 +414,48 @@ private:
 
     /// Event handler called when a station connects to the ESP32 SoftAP.
     ///
-    /// @param sta_info Station information (aid, mac).
-    void on_softap_station_connected(wifi_event_ap_staconnected_t sta_info);
+    /// @param mac Station MAC address.
+    /// @param aid Station access point identifier.
+    void on_softap_station_connected(uint8_t mac[6], uint8_t aid);
 
     /// Event handler called when a station disconnects from the ESP32 SoftAP.
     ///
-    /// @param sta_info Station information (aid, mac).
-    void on_softap_station_disconnected(wifi_event_ap_stadisconnected_t sta_info);
+    /// @param mac Station MAC address.
+    /// @param aid Station access point identifier.
+    void on_softap_station_disconnected(uint8_t mac[6], uint8_t aid);
 
     /// Event handler called when a WiFi scan operation completes.
     ///
-    /// @param scan_info WiFi scan result information.
-    void on_wifi_scan_completed(wifi_event_sta_scan_done_t scan_info);
+    /// @param status is the status of the WiFi scan request.
+    /// @param count is the number of access points found.
+    void on_wifi_scan_completed(uint32_t status, uint8_t count);
 
     /// Configures SNTP and TimeZone (if enabled).
     void configure_sntp();
 
+    /// Reconfigures the WiFi radio sleep mode.
+    void reconfigure_wifi_radio_sleep();
+    
+    /// Reconfigures the WiFi radio transmit power.
+    ///
+    /// NOTE: This will only be called after the station connection has been
+    /// established or after the SoftAP has been started. Before these events
+    /// the transmit power will be configured to the maximum value.
+    void reconfigure_wifi_tx_power();
+
     /// Handle for the wifi_manager_task that manages the WiFi stack, including
     /// periodic health checks of the connected hubs or clients.
     os_thread_t wifiTaskHandle_;
+
+    /// Dynamically generated hostname for this node, esp32_{node-id}. This is
+    /// also used for the SoftAP SSID name (if enabled).
+    std::string hostname_;
+
+    /// User provided SSID to connect to.
+    std::string ssid_;
+
+    /// User provided password for the SSID to connect to.
+    std::string password_;
 
     /// Persistent configuration that will be used for this node's WiFi usage.
     const WiFiConfiguration cfg_;
@@ -451,99 +463,80 @@ private:
     /// OpenMRN stack for the Arduino system.
     openlcb::SimpleStackBase *stack_;
 
-    /// WiFi connection status indicator LED.
-    const Gpio *wifiStatusLed_{nullptr};
+    /// WiFi connection status indicator @ref Gpio instance.
+    const Gpio *statusLed_{nullptr};
 
     /// WiFi operating mode.
-    wifi_mode_t wifiMode_;
+    const wifi_mode_t wifiMode_;
 
-    /// Dynamically generated hostname for this node, esp32_{node-id}. This is
-    /// also used for the SoftAP SSID name (if enabled).
-    std::string hostnamePrefix_;
+    /// Channel to use for the SoftAP interface.
+    const uint8_t softAPChannel_;
 
-    /// Dynamically generated hostname for this node, esp32_{node-id}. This is
-    /// also used for the SoftAP SSID name (if enabled).
-    std::string hostname_;
-
-    /// User provided SSID to connect to.
-    std::string stationSsid_;
-
-    /// User provided password for the SSID to connect to.
-    std::string stationPassword_;
-
-    /// Static IP Address configuration for the Station connection.
-    ESP32_ADAPTER_IP_INFO_TYPE *stationStaticIP_;
-
-    /// Primary DNS Address to use when configured for Static IP.
-    ip_addr_t primaryDNSAddress_;
+    /// Authentication mode to use for the SoftAP. If not set to WIFI_AUTH_OPEN
+    /// @ref softAPPassword_ will be used.
+    wifi_auth_mode_t softAPAuthMode_;
 
     /// User provided name for the SoftAP when active, defaults to
-    /// @ref hostname_ when null/blank.
+    /// @ref hostname_ when null.
+    /// NOTE: Only used when @ref wifiMode_ is set to WIFI_MODE_AP or
+    /// WIFI_MODE_APSTA.
     std::string softAPName_;
 
-    /// User provided password for the SoftAP when active.
+    /// User provided password for the SoftAP when active, defaults to
+    /// @ref password when null and softAPAuthMode_ is not WIFI_AUTH_OPEN.
+    /// NOTE: Only used when @ref wifiMode_ is set to WIFI_MODE_AP or
+    /// WIFI_MODE_APSTA.
     std::string softAPPassword_;
 
-    /// Authentication mode to use for the SoftAP.
-    wifi_auth_mode_t softAPAuthMode_{WIFI_AUTH_WPA_WPA2_PSK};
-    
-    /// Channel to use for the SoftAP interface.
-    uint8_t softAPChannel_;
+    /// Enables SNTP polling.
+    const bool sntpEnabled_;
 
-    /// Static IP Address configuration for the SoftAP.
-    /// Default static IP provided by ESP-IDF is 192.168.4.1.
-    ESP32_ADAPTER_IP_INFO_TYPE *softAPStaticIP_;
+    /// SNTP server address.
+    std::string sntpServer_;
+
+    /// TimeZone of the node.
+    std::string timeZone_;
+
+    /// Tracks if SNTP has been configured.
+    bool sntpConfigured_{false};
+
+    /// Cached copy of the file descriptor passed into apply_configuration.
+    /// This is internally used by the wifi_manager_task to processed deferred
+    /// configuration load.
+    int configFd_{-1};
+
+    /// Calculated CRC-32 of cfg_ data. Used to detect changes in configuration
+    /// which may require the wifi_manager_task to reload config.
+    uint32_t configCrc32_{0};
+
+    /// Internal flag to request the wifi_manager_task reload configuration.
+    bool configReloadRequested_{true};
 
     /// Internal flag to request the wifi_manager_task to shutdown.
     bool shutdownRequested_{false};
-
-    /// If true, request esp32 wifi to do verbose logging.
-    bool verboseLogging_{false};
 
     /// If true, the esp32 will block startup until the SSID connection has
     /// successfully completed and upon failure (or timeout) the esp32 will be
     /// restarted.
     bool waitForStationConnect_{true};
 
-    /// Cached copy of the radio sleep parameter, if true the WiFi radio will
-    /// use low power mode.
-    bool enableRadioSleep_;
+    /// If true, request esp32 wifi to do verbose logging.
+    bool verboseLogging_{false};
 
-    /// Cached copy of the WiFi TX power limit.
-    int8_t wifiTXPower_;
+    /// If true, the managed uplink will be started and stopped when necessary.
+    bool uplinkEnabled_{false};
 
-    /// If true the esp32 will attempt to create an uplink connection.
-    bool enableUplink_;
+    /// If true, the managed hub will be started and stopped when necessary.
+    bool hubEnabled_{false};
 
-    /// Cached copy of the uplink mDNS search value.
-    std::string uplinkAutoService_;
+    /// Maximum WiFi transmit power setting.
+    uint8_t wifiTXPower_{84};
 
-    /// Cached copy of the manual uplink hostname.
-    std::string uplinkManualHost_;
-
-    /// Cached copy of the manual uplink port.
-    uint16_t uplinkManualPort_;
-
-    /// If true the esp32 will create and advertise itself as a hub.
-    bool enableHub_;
+    /// @ref GcTcpHub for this node's hub if enabled.
+    std::unique_ptr<GcTcpHub> hub_;
 
     /// mDNS service name being advertised by the hub, if enabled.
     std::string hubServiceName_;
-
-    /// Port to use for the hub.
-    uint16_t hubPort_;
-
-    /// Enables SNTP polling.
-    bool sntpEnabled_{false};
-
-    /// Tracks if SNTP has been configured.
-    bool sntpConfigured_{false};
-
-    /// SNTP server address.
-    std::string sntpServer_{"pool.ntp.org"};
-
-    /// TimeZone of the node.
-    std::string timeZone_{"UTC0"};
 
     /// @ref SocketClient for this node's uplink.
     std::unique_ptr<SocketClient> uplink_;
@@ -555,50 +548,50 @@ private:
     std::vector<wifi_ap_record_t> ssidScanResults_;
 
     /// Protects ssidScanResults_ vector.
-    std::mutex ssidScanResultsLock_;
+    OSMutex ssidScanResultsLock_;
 
     /// Notifiable to be called when SSID scan completes.
     Notifiable *ssidCompleteNotifiable_{nullptr};
 
     /// Protects the mdnsInitialized_ flag and mdnsDeferredPublish_ map.
-    std::mutex mdnsInitLock_;
+    OSMutex mdnsInitLock_;
 
     /// Internal flag for tracking that the mDNS system has been initialized.
     bool mdnsInitialized_{false};
+
+    /// Executor to use for the uplink connections and callbacks.
+    Executor<1> executor_{NO_THREAD()};
 
     /// Internal holder for mDNS entries which could not be published due to
     /// mDNS not being initialized yet.
     std::map<std::string, uint16_t> mdnsDeferredPublish_;
 
-    /// Protects the networkUpCallbacks_, networkDownCallbacks_ and
-    /// networkInitCallbacks_ vectors.
-    std::mutex networkCallbacksLock_;
+    /// Protects the networkUpCallbacks_, networkDownCallbacks_,
+    /// networkInitCallbacks_ and networkTimeCallbacks_ vectors.
+    OSMutex networkCallbacksLock_;
 
     /// Holder for callbacks to invoke when the WiFi connection is up.
-    std::vector<esp32_network_up_callback_t> networkUpCallbacks_;
+    std::vector<esp_network_up_callback_t> networkUpCallbacks_;
 
     /// Holder for callbacks to invoke when the WiFi connection is down.
-    std::vector<esp32_network_down_callback_t> networkDownCallbacks_;
+    std::vector<esp_network_down_callback_t> networkDownCallbacks_;
 
     /// Holder for callbacks to invoke when the WiFi subsystem has started.
-    std::vector<esp32_network_init_callback_t> networkInitCallbacks_;
+    std::vector<esp_network_init_callback_t> networkInitCallbacks_;
 
     /// Holder for callbacks to invoke when network time synchronizes.
-    std::vector<esp32_network_time_callback_t> networkTimeCallbacks_;
-
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
-    /// Network interfaces that are managed by Esp32WiFiManager.
-    esp_netif_t *esp_netifs[ESP_IF_MAX]{nullptr, nullptr, nullptr};
-#endif // IDF v4.1+
+    std::vector<esp_network_time_callback_t> networkTimeCallbacks_;
 
     /// Maximum length of the hostname for the ESP32.
     static constexpr uint8_t MAX_HOSTNAME_LENGTH = 32;
 
-    /// Maximum length of the SSID (Station or SoftAP) for the ESP32.
-    static constexpr uint8_t MAX_SSID_LENGTH = 31;
-
-    /// Maximum length of the Password (Station or SoftAP) for the ESP32.
-    static constexpr uint8_t MAX_PASSWORD_LENGTH = 63;
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
+    /// Network interfaces that are managed by Esp32WiFiManager.
+    esp_netif_t *espNetIfaces_[MAX_NETWORK_INTERFACES]
+    {
+        nullptr, nullptr
+    };
+#endif // IDF v4.1+
 
     DISALLOW_COPY_AND_ASSIGN(Esp32WiFiManager);
 };
@@ -606,9 +599,10 @@ private:
 } // namespace openmrn_arduino
 
 using openmrn_arduino::Esp32WiFiManager;
-using openmrn_arduino::ESP32_ADAPTER_IP_INFO_TYPE;
-using openmrn_arduino::esp32_network_up_callback_t;
-using openmrn_arduino::esp32_network_down_callback_t;
-using openmrn_arduino::esp32_network_init_callback_t;
+using openmrn_arduino::esp_network_interface_t;
+using openmrn_arduino::esp_network_up_callback_t;
+using openmrn_arduino::esp_network_down_callback_t;
+using openmrn_arduino::esp_network_init_callback_t;
+using openmrn_arduino::esp_network_time_callback_t;
 
 #endif // _FREERTOS_DRIVERS_ESP32_ESP32WIFIMGR_HXX_

@@ -95,11 +95,10 @@ public:
     /// Locks the specific critical section.
     void lock()
     {
-#if defined(portENTER_CRITICAL_SAFE)
-        portENTER_CRITICAL_SAFE(&mux);
-#else
-        // Prior to ESP-IDF v3.3 the portENTER_CRITICAL_SAFE does not exist,
-        // the below is the same as the macro.
+        // This should really use portENTER_CRITICAL_SAFE() but that is not
+        // available prior to ESP-IDF 3.3 which is not available in the
+        // arduino-esp32 environment generally. The below code is the
+        // implementation of that macro.
         if (xPortInIsrContext())
         {
             portENTER_CRITICAL_ISR(&mux);
@@ -108,16 +107,14 @@ public:
         {
             portENTER_CRITICAL(&mux);
         }
-#endif // portENTER_CRITICAL_SAFE
     }
     /// Unlocks the specific critical section.
     void unlock()
     {
-#if defined(portEXIT_CRITICAL_SAFE)
-        portEXIT_CRITICAL_SAFE(&mux);
-#else
-        // Prior to ESP-IDF v3.3 the portEXIT_CRITICAL_SAFE does not exist,
-        // the below is the same as the macro.
+        // This should really use portEXIT_CRITICAL_SAFE() but that is not
+        // available prior to ESP-IDF 3.3 which is not available in the
+        // arduino-esp32 environment generally. The below code is the
+        // implementation of that macro.
         if (xPortInIsrContext())
         {
             portEXIT_CRITICAL_ISR(&mux);
@@ -126,7 +123,6 @@ public:
         {
             portEXIT_CRITICAL(&mux);
         }
-#endif // portEXIT_CRITICAL_SAFE
     }
 
 private:

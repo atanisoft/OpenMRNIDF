@@ -42,12 +42,20 @@
 
 #include <driver/gpio.h>
 
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+/// Helper macro to test if a pin has been configured for output.
+///
+/// This is necessary since ESP-IDF does not expose gpio_get_direction(pin).
+#define IS_GPIO_OUTPUT(pin) (GPIO_IS_VALID_OUTPUT_GPIO(pin) &&                 \
+                             GPIO.enable.data & BIT(pin & 25))
+#else // NOT ESP32-C3
 /// Helper macro to test if a pin has been configured for output.
 ///
 /// This is necessary since ESP-IDF does not expose gpio_get_direction(pin).
 #define IS_GPIO_OUTPUT(pin) (GPIO_IS_VALID_OUTPUT_GPIO(pin) &&                 \
                              (pin < 32) ? GPIO.enable & BIT(pin & 31) :        \
                                           GPIO.enable1.data & BIT(pin & 31))
+#endif // CONFIG_IDF_TARGET_ESP32C3
 
 template <class Defs, bool SAFE_VALUE, bool INVERT> struct GpioOutputPin;
 template <class Defs, bool PUEN, bool PDEN> struct GpioInputPin;
@@ -71,7 +79,10 @@ public:
                 , "Pin is reserved for flash usage.");
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
     static_assert(PIN_NUM >= 0 && PIN_NUM <= 21, "Valid pin range is 0..21.");
-    static_assert(PIN_NUM != 19, "Pin does not exist.");
+    // these pins are connected to the embedded flash and are not exposed on
+    // the DevKitM-1 board.
+    static_assert(!(PIN_NUM >= 11 && PIN_NUM <= 17)
+                , "Pin is reserved for flash usage.");
 #else
     static_assert(PIN_NUM >= 0 && PIN_NUM <= 39, "Valid pin range is 0..39.");
     static_assert(PIN_NUM != 24, "Pin does not exist");
@@ -188,7 +199,7 @@ public:
 // compile time sanity check that the selected pin is valid for output.
 #if defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)
     static_assert(PIN_NUM != 46, "Pin 46 can not be used for output.");
-#else
+#elif defined(CONFIG_IDF_TARGET_ESP32)
     static_assert(PIN_NUM < 34, "Pins 34 and above can not be used as output.");
 #endif // CONFIG_IDF_TARGET_ESP32S2 / CONFIG_IDF_TARGET_ESP32S3
 
@@ -212,31 +223,10 @@ public:
         ESP_ERROR_CHECK(gpio_set_level(PIN_NUM, SAFE_VALUE));
     }
 
-    /// Sets the output pin @param value if true, output is set to HIGH, if
-    /// false, output is set to LOW.
-    static void set(bool value) __attribute__ ((deprecated))
-    {
-        if (INVERT)
-        {
-            ESP_ERROR_CHECK(gpio_set_level(PIN_NUM, !value));
-        }
-        else
-        {
-            ESP_ERROR_CHECK(gpio_set_level(PIN_NUM, value));
-        }
-    }
-
     /// Toggles the state of the pin to the opposite of what it is currently.
     static void toggle()
     {
         instance()->write(!instance()->read());
-    }
-
-    /// Reads the current state of the connected GPIO pin.
-    /// @return @ref true if currently high, @ref false if currently low.
-    static bool get() __attribute__ ((deprecated))
-    {
-        return gpio_get_level(PIN_NUM);
     }
 
     /// @return static Gpio object instance that controls this output pin.
@@ -297,6 +287,11 @@ public:
     // GPIO 0 typically has a pull-up resistor
     static_assert(!PDEN || (PDEN && PIN_NUM != 0),
                   "GPIO 0 typically has a built-in pull-up resistors, "
+                  "enabling pull-down is not possible.");
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+    // GPIO 9 typically has a pull-up resistor
+    static_assert(!PDEN || (PDEN && PIN_NUM != 9),
+                  "GPIO 9 typically has a built-in pull-up resistors, "
                   "enabling pull-down is not possible.");
 #else
     // GPIO 2, 4 and 12 typically have pull-down resistors.
@@ -409,6 +404,16 @@ template <class Defs> struct GpioInputPUPD : public GpioInputPin<Defs, true, tru
 ///                flash.
 ///    - 16, 17  : Used for flash and/or PSRAM.
 ///
+/// ESP32-PICO-V3: Nearly the same as ESP32-PICO-D4 with the following
+/// differences:
+///    - 7, 8       : Available for use, however validation checks will prevent
+///                   usage due to no compile time constant available to
+///                   uniquely identify this variant.
+///    - 20         : Available for use.
+///    - 16 - 18, 23: Not available, however validations checks will not
+///                   prevent usage of GPIO 18 or 23 due to no compile time
+///                   constant available to uniquely identify this variant.
+///
 /// ESP32-WROVER and WROVER-B: Nearly the same as ESP32 but with the following
 /// differences:
 ///    - 16, 17  : Reserved for PSRAM on WROVER/WROVER-B modules.
@@ -430,6 +435,7 @@ template <class Defs> struct GpioInputPUPD : public GpioInputPin<Defs, true, tru
 ///    - 8       : Most modules have an RGB LED on this pin.
 ///    - 9       : Connected to built-in pull-up resistor, may also have an
 ///                external pull-up resistor.
+///    - 11 - 17 : Used for flash and/or PSRAM.
 ///
 /// Pins marked as having a pull-up or pull-down resistor are typically 10kOhm.
 ///
@@ -441,9 +447,15 @@ template <class Defs> struct GpioInputPUPD : public GpioInputPin<Defs, true, tru
 /// ESP32-WROVER: https://www.espressif.com/sites/default/files/documentation/esp32-wrover_datasheet_en.pdf
 /// ESP32-WROVER-B: https://www.espressif.com/sites/default/files/documentation/esp32-wrover-b_datasheet_en.pdf
 /// ESP32-PICO-D4: https://www.espressif.com/sites/default/files/documentation/esp32-pico-d4_datasheet_en.pdf
+/// ESP32-PICO-V3: https://www.espressif.com/sites/default/files/documentation/esp32-pico-v3_datasheet_en.pdf
 /// ESP32-S2: https://www.espressif.com/sites/default/files/documentation/esp32-s2_datasheet_en.pdf
 /// ESP32-S2-WROVER: https://www.espressif.com/sites/default/files/documentation/esp32-s2-wrover_esp32-s2-wrover-i_datasheet_en.pdf
 /// ESP32-C3: https://www.espressif.com/sites/default/files/documentation/esp32-c3_datasheet_en.pdf
+///
+/// SoC technical references:
+/// ESP32: https://www.espressif.com/sites/default/files/documentation/esp32_technical_reference_manual_en.pdf
+/// ESP32-S2: https://www.espressif.com/sites/default/files/documentation/esp32-s2_technical_reference_manual_en.pdf
+/// ESP32-C3: https://www.espressif.com/sites/default/files/documentation/esp32-c3_technical_reference_manual_en.pdf
 ///
 /// Module schematic references:
 /// DevKitC v4: https://dl.espressif.com/dl/schematics/esp32_devkitc_v4-sch-20180607a.pdf
@@ -456,6 +468,7 @@ template <class Defs> struct GpioInputPUPD : public GpioInputPin<Defs, true, tru
 /// PICO KIT v3: https://dl.espressif.com/dl/schematics/esp32-pico-kit-v3_schematic.pdf
 /// ESP32-S2-Saola-1: https://dl.espressif.com/dl/schematics/ESP32-S2-SAOLA-1_V1.1_schematics.pdf
 /// ESP32-S2-Kaluga-1: https://dl.espressif.com/dl/schematics/ESP32-S2-Kaluga-1_V1_3_SCH_20200526A.pdf
+/// ESP32-C3-DevKitM-1: https://dl.espressif.com/dl/schematics/SCH_ESP32-C3-DEVKITM-1_V1_20200915A.pdf
 ///
 /// NOTE: The WROVER KIT v1 is also known as DevKitJ and is RED colored PCB
 /// that supports both WROVER and WROOM-32 modules.

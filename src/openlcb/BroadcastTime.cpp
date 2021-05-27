@@ -46,12 +46,10 @@ namespace openlcb
 //
 void BroadcastTime::clear_timezone()
 {
-// The ESP32 uses a single global timezone setting and that may conflict if the
-// system is using a different timezone than the one specified below.
 #ifndef ESP32
-    setenv("TZ", "GMT0", 1);
-    tzset();
-#endif // ! ESP32
+        setenv("TZ", "GMT0", 1);
+        tzset();
+#endif
 }
 
 } // namespace openlcb

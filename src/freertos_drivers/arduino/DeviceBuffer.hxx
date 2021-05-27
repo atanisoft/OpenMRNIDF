@@ -39,13 +39,13 @@
 #include <cstdint>
 #include <unistd.h>
 #include <stdlib.h>
-#include "utils/macros.h"
 
 #include "openmrn_features.h"
+#include "utils/macros.h"
 
-#if OPENMRN_FEATURE_DEVTAB
+#ifdef OPENMRN_FEATURE_DEVTAB
 #include "Devtab.hxx"
-#endif
+#endif // OPENMRN_FEATURE_DEVTAB
 
 /** Helper for DeviceBuffer which allows for methods to not be inlined.
  */

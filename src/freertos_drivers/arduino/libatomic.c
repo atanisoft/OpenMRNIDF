@@ -37,12 +37,10 @@
 
 #ifdef ESP32
 #include "sdkconfig.h"
-#include <soc/cpu.h>
-#include <soc/soc_memory_layout.h>
-#include <xtensa/xtruntime.h>
+#include <esp_idf_version.h>
 #endif
 
-#if defined(STM32F0xx) || (!defined(ARDUINO) && !defined(ESP32))
+#if defined(STM32F0xx) || (!defined(ARDUINO) && !defined(CONFIG_IDF_TARGET))
 // On Cortex-M0 the only way to do atomic operation is to disable interrupts.
 
 /// Disables interrupts and saves the interrupt enable flag in a register.
@@ -89,29 +87,20 @@ uint8_t __atomic_fetch_and_1(uint8_t *ptr, uint8_t val, int memorder)
     return ret;
 }
 
-#elif defined(CONFIG_IDF_TARGET_ESP32S2)
-// The ESP32-S2 GCC does not include an implementation for __atomic_exchange_1
-// at this time. The version below has been replicated from above with asm code
-// adjusted for the ESP32S2.
-
-/// Disables interrupts and saves the interrupt enable flag in a register.
-#define ACQ_LOCK()                                                             \
-    uint32_t _pastlock;                                                        \
-    __asm__ __volatile__ ("rsil %0, " XTSTR(XCHAL_EXCM_LEVEL) "\n"             \
-                          : "=r"(_pastlock));
-
-/// Restores the interrupte enable flag from a register.
-#define REL_LOCK() __asm__ __volatile__ ("memw \n"                             \
-                                         "wsr %0, ps\n"                        \
-                                        :: "r"(_pastlock));
-
+#elif defined(CONFIG_IDF_TARGET_ESP32S2) || (ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,4,0) && defined(CONFIG_IDF_TARGET_ESP32C3))
+#include "freertos/portmacro.h"
+// Currently arduino-esp32 2.0.0-alpha1 is picking up a version of ESP-IDF v4.4
+// which does not have the fix for https://github.com/espressif/esp-idf/issues/6463
+// The code below is a simplified version of the code from:
+// https://github.com/espressif/esp-idf/blob/b1eacc24f2d307bf4adbce7abd06ae64d895149c/components/newlib/stdatomic.c#L76-L83
+// arduino-esp32 2.0.0-alpha2 should pick up this fix and this block will be
+// removed.
 uint8_t __atomic_exchange_1(uint8_t *ptr, uint8_t val, int memorder)
 {
-    ACQ_LOCK();
+    unsigned state = portENTER_CRITICAL_NESTED();
     uint8_t ret = *ptr;
     *ptr = val;
-    REL_LOCK();
+    portEXIT_CRITICAL_NESTED(state);
     return ret;
 }
-
 #endif // guard for arduino compilation

@@ -38,27 +38,61 @@
 #ifndef _FREERTOS_DRIVERS_ESP32_ESP32HWCAN_HXX_
 #define _FREERTOS_DRIVERS_ESP32_ESP32HWCAN_HXX_
 
+namespace openmrn_arduino
+{
+
 #include "freertos_drivers/arduino/Can.hxx"
+#include <esp_idf_version.h>
 
-#include "utils/constants.hxx"
-
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,2,0)
+#include <driver/twai.h>
+#else // NOT IDF v4.2+
 #include <driver/can.h>
-#include <driver/gpio.h>
-#include <esp_task.h>
-#include <esp_task_wdt.h>
-#include "os/OS.hxx"
 
-namespace openmrn_arduino {
+// The following types and APIs are created as aliases as a compatibility for
+// IDF v4.3+ which breaks due to driver/twai.h on the ESP32 attempting to
+// override a few types also defined in can_ioctl.h. The types below are the
+// minimum required for this code to work correctly.
+typedef can_timing_config_t twai_timing_config_t;
+typedef can_filter_config_t twai_filter_config_t;
+typedef can_general_config_t twai_general_config_t;
+typedef can_status_info_t twai_status_info_t;
+typedef can_message_t twai_message_t;
+#define TWAI_TIMING_CONFIG_125KBITS CAN_TIMING_CONFIG_125KBITS
+#define TWAI_FILTER_CONFIG_ACCEPT_ALL CAN_FILTER_CONFIG_ACCEPT_ALL
+#define TWAI_MODE_NORMAL CAN_MODE_NORMAL
+#define TWAI_IO_UNUSED CAN_IO_UNUSED
+#define TWAI_ALERT_NONE CAN_ALERT_NONE
+#define TWAI_STATE_BUS_OFF CAN_STATE_BUS_OFF
+#define TWAI_STATE_RECOVERING CAN_STATE_RECOVERING
+#define TWAI_MSG_FLAG_NONE CAN_MSG_FLAG_NONE
+#define TWAI_MSG_FLAG_EXTD CAN_MSG_FLAG_EXTD
+#define TWAI_MSG_FLAG_RTR CAN_MSG_FLAG_RTR
+#define TWAI_MSG_FLAG_DLC_NON_COMP CAN_MSG_FLAG_DLC_NON_COMP
+
+#define twai_driver_install can_driver_install
+#define twai_start can_start
+#define twai_stop can_stop
+#define twai_get_status_info can_get_status_info
+#define twai_initiate_recovery can_initiate_recovery
+#define twai_transmit can_transmit
+#define twai_receive can_receive
+
+#endif // IDF v4.2+
+
+#include <driver/gpio.h>
+#include <esp_task_wdt.h>
 
 /// ESP32 CAN bus status strings, used for periodic status reporting
-static const char *ESP32_CAN_STATUS_STRINGS[] = {
+static const char *ESP32_CAN_STATUS_STRINGS[] =
+{
     "STOPPED",               // CAN_STATE_STOPPED
     "RUNNING",               // CAN_STATE_RUNNING
     "OFF / RECOVERY NEEDED", // CAN_STATE_BUS_OFF
     "RECOVERY UNDERWAY"      // CAN_STATE_RECOVERING
 };
 
-class Esp32HardwareCan : public Can
+class Esp32HardwareCanDeprecated : public Can
 {
 public:
     /// Constructor.
@@ -68,26 +102,26 @@ public:
     /// transceiver RX.
     /// @param txPin is the ESP32 pin that is connected to the external
     /// transceiver TX.
-    Esp32HardwareCan(const char *name, gpio_num_t rxPin, gpio_num_t txPin,
-        bool reportStats = true)
+    Esp32HardwareCanDeprecated(const char *name, gpio_num_t rxPin,
+        gpio_num_t txPin, bool reportStats = true)
         : Can(name)
         , reportStats_(reportStats)
         , overrunWarningPrinted_(false)
     {
         // Configure the ESP32 CAN driver to use 125kbps.
-        can_timing_config_t can_timing_config = CAN_TIMING_CONFIG_125KBITS();
+        twai_timing_config_t can_timing_config = TWAI_TIMING_CONFIG_125KBITS();
         // By default we accept all CAN frames.
-        can_filter_config_t can_filter_config = CAN_FILTER_CONFIG_ACCEPT_ALL();
+        twai_filter_config_t can_filter_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
         // Note: not using the CAN_GENERAL_CONFIG_DEFAULT macro due to a missing
         // cast for CAN_IO_UNUSED.
-        can_general_config_t can_general_config = {.mode = CAN_MODE_NORMAL,
+        twai_general_config_t can_general_config = {.mode = TWAI_MODE_NORMAL,
             .tx_io = txPin,
             .rx_io = rxPin,
-            .clkout_io = (gpio_num_t)CAN_IO_UNUSED,
-            .bus_off_io = (gpio_num_t)CAN_IO_UNUSED,
+            .clkout_io = (gpio_num_t)TWAI_IO_UNUSED,
+            .bus_off_io = (gpio_num_t)TWAI_IO_UNUSED,
             .tx_queue_len = (uint32_t)config_can_tx_buffer_size() / 2,
             .rx_queue_len = (uint32_t)config_can_rx_buffer_size() / 2,
-            .alerts_enabled = CAN_ALERT_NONE,
+            .alerts_enabled = TWAI_ALERT_NONE,
             .clkout_divider = 0};
 
         LOG(VERBOSE,
@@ -96,35 +130,30 @@ public:
             can_general_config.rx_io, can_general_config.tx_io,
             can_general_config.rx_queue_len, can_general_config.tx_queue_len);
 
-        ESP_ERROR_CHECK(can_driver_install(
+        ESP_ERROR_CHECK(twai_driver_install(
             &can_general_config, &can_timing_config, &can_filter_config));
 
-        xTaskCreate(rx_task, "CAN RX",
-            config_arduino_openmrn_stack_size(), this,
-            config_arduino_openmrn_task_priority() - 1, &rxTaskHandle_);
-
-        xTaskCreate(tx_task, "CAN TX",
-            config_arduino_openmrn_stack_size(), this,
-            config_arduino_openmrn_task_priority() - 2, &txTaskHandle_);
+        xTaskCreatePinnedToCore(rx_task, "ESP32-CAN RX", OPENMRN_STACK_SIZE,
+            this, RX_TASK_PRIORITY, &rxTaskHandle_, tskNO_AFFINITY);
+        xTaskCreatePinnedToCore(tx_task, "ESP32-CAN TX", OPENMRN_STACK_SIZE,
+            this, TX_TASK_PRIORITY, &txTaskHandle_, tskNO_AFFINITY);
     }
 
-    ~Esp32HardwareCan()
+    ~Esp32HardwareCanDeprecated()
     {
     }
 
     /// Enables the ESP32 CAN driver
     virtual void enable()
     {
-        LOG(WARNING,
-            "Esp32HardwareCan has been deprecated, please use Esp32Twai.");
-        ESP_ERROR_CHECK(can_start());
+        ESP_ERROR_CHECK(twai_start());
         LOG(VERBOSE, "ESP32-CAN driver enabled");
     }
 
     /// Disables the ESP32 CAN driver
     virtual void disable()
     {
-        ESP_ERROR_CHECK(can_stop());
+        ESP_ERROR_CHECK(twai_stop());
         LOG(VERBOSE, "ESP32-CAN driver disabled");
     }
 
@@ -138,7 +167,7 @@ protected:
 
 private:
     /// Default constructor.
-    Esp32HardwareCan();
+    Esp32HardwareCanDeprecated();
 
     /// Enables/Disables the periodic reporting of CAN bus statistics to the
     /// default serial stream.
@@ -161,15 +190,24 @@ private:
     /// transmit failure or there is nothing to transmit.
     static constexpr TickType_t TX_DEFAULT_DELAY = pdMS_TO_TICKS(250);
 
+    /// Priority to use for the rx_task. This needs to be higher than the
+    /// tx_task and lower than @ref OPENMRN_TASK_PRIORITY.
+    static constexpr UBaseType_t RX_TASK_PRIORITY = ESP_TASK_TCPIP_PRIO - 2;
+
+    /// Priority to use for the tx_task. This should be lower than
+    /// @ref RX_TASK_PRIORITY and @ref OPENMRN_TASK_PRIORITY.
+    static constexpr UBaseType_t TX_TASK_PRIORITY = ESP_TASK_TCPIP_PRIO - 3;
+
     /// Background task that takes care of the conversion of the @ref can_frame
     /// provided by the @ref txBuf into an ESP32 can_message_t which can be
     /// processed by the native CAN driver. This task also covers the periodic
     /// status reporting and BUS recovery when necessary.
     static void tx_task(void *can)
     {
-        /// Get handle to our parent Esp32HardwareCan object to access the
-        /// txBuf.
-        Esp32HardwareCan *parent = reinterpret_cast<Esp32HardwareCan *>(can);
+        /// Get handle to our parent Esp32HardwareCanDeprecated object to
+        /// access the txBuf.
+        Esp32HardwareCanDeprecated *parent =
+            reinterpret_cast<Esp32HardwareCanDeprecated *>(can);
 
 #if CONFIG_TASK_WDT
         // Add this task to the WDT
@@ -189,8 +227,8 @@ private:
             // periodic CAN driver monitoring and reporting, this takes care of
             // bus recovery when the CAN driver disables the bus due to error
             // conditions exceeding thresholds.
-            can_status_info_t status;
-            can_get_status_info(&status);
+            twai_status_info_t status;
+            twai_get_status_info(&status);
             auto current_tick_count = xTaskGetTickCount();
             if (next_status_display_tick_count == 0 ||
                 current_tick_count >= next_status_display_tick_count)
@@ -211,15 +249,15 @@ private:
                 }
                 parent->overrunWarningPrinted_ = false;
             }
-            if (status.state == CAN_STATE_BUS_OFF)
+            if (status.state == TWAI_STATE_BUS_OFF)
             {
                 // When the bus is OFF we need to initiate recovery, transmit is
                 // not possible when in this state.
                 LOG(WARNING, "ESP32-CAN: initiating recovery");
-                can_initiate_recovery();
+                twai_initiate_recovery();
                 continue;
             }
-            else if (status.state == CAN_STATE_RECOVERING)
+            else if (status.state == TWAI_STATE_RECOVERING)
             {
                 // when the bus is in recovery mode transmit is not possible.
                 vTaskDelay(TX_DEFAULT_DELAY);
@@ -242,10 +280,10 @@ private:
             }
 
             /// ESP32 native CAN driver frame
-            can_message_t msg;
-            bzero(&msg, sizeof(can_message_t));
+            twai_message_t msg;
+            memset(&msg, 0, sizeof(twai_message_t));
 
-            msg.flags = CAN_MSG_FLAG_NONE;
+            msg.flags = TWAI_MSG_FLAG_NONE;
             msg.identifier = can_frame->can_id;
             msg.data_length_code = can_frame->can_dlc;
             for (int i = 0; i < can_frame->can_dlc; i++)
@@ -254,11 +292,11 @@ private:
             }
             if (IS_CAN_FRAME_EFF(*can_frame))
             {
-                msg.flags |= CAN_MSG_FLAG_EXTD;
+                msg.flags |= TWAI_MSG_FLAG_EXTD;
             }
             if (IS_CAN_FRAME_RTR(*can_frame))
             {
-                msg.flags |= CAN_MSG_FLAG_RTR;
+                msg.flags |= TWAI_MSG_FLAG_RTR;
             }
 
             // Pass the converted CAN frame to the native driver
@@ -267,7 +305,7 @@ private:
             // the message being left in txBuf for the next iteration.
             // if this call returns ESP_OK we consider the frame as
             // transmitted by the driver and remove it from txBuf.
-            esp_err_t tx_res = can_transmit(&msg, pdMS_TO_TICKS(100));
+            esp_err_t tx_res = twai_transmit(&msg, pdMS_TO_TICKS(100));
             if (tx_res == ESP_OK)
             {
                 LOG(VERBOSE,
@@ -293,8 +331,10 @@ private:
     /// a @ref can_frame and pushing them to the @ref rxBuf.
     static void rx_task(void *can)
     {
-        /// Get handle to our parent Esp32HardwareCan object to access the rxBuf
-        Esp32HardwareCan *parent = reinterpret_cast<Esp32HardwareCan *>(can);
+        /// Get handle to our parent Esp32HardwareCanDeprecated object to access
+        /// the rxBuf.
+        Esp32HardwareCanDeprecated *parent =
+            reinterpret_cast<Esp32HardwareCanDeprecated *>(can);
 
 #if CONFIG_TASK_WDT
         // Add this task to the WDT
@@ -309,16 +349,16 @@ private:
 #endif // CONFIG_TASK_WDT
 
             /// ESP32 native CAN driver frame
-            can_message_t msg;
-            bzero(&msg, sizeof(can_message_t));
-            if (can_receive(&msg, pdMS_TO_TICKS(250)) != ESP_OK)
+            twai_message_t msg;
+            memset(&msg, 0, sizeof(twai_message_t));
+            if (twai_receive(&msg, pdMS_TO_TICKS(250)) != ESP_OK)
             {
                 // native CAN driver did not give us a frame.
                 continue;
             }
             // we have received a frame from the native CAN driver, verify if
             // it is a standard frame, if not we drop it.
-            if (msg.flags & CAN_MSG_FLAG_DLC_NON_COMP)
+            if (msg.flags & TWAI_MSG_FLAG_DLC_NON_COMP)
             {
                 LOG(WARNING,
                     "ESP32-CAN-RX: received non-compliant CAN frame, frame "
@@ -356,11 +396,11 @@ private:
             {
                 can_frame->data[i] = msg.data[i];
             }
-            if (msg.flags & CAN_MSG_FLAG_EXTD)
+            if (msg.flags & TWAI_MSG_FLAG_EXTD)
             {
                 SET_CAN_FRAME_EFF(*can_frame);
             }
-            if (msg.flags & CAN_MSG_FLAG_RTR)
+            if (msg.flags & TWAI_MSG_FLAG_RTR)
             {
                 SET_CAN_FRAME_RTR(*can_frame);
             }
@@ -368,8 +408,19 @@ private:
             parent->rxBuf->signal_condition();
         }
     }
-    DISALLOW_COPY_AND_ASSIGN(Esp32HardwareCan);
+    DISALLOW_COPY_AND_ASSIGN(Esp32HardwareCanDeprecated);
 };
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
+/// Esp32HardwareCan has been deprecated due to lack of portability beyond the
+/// ESP32.
+/// @deprecated Use @ref Esp32HardwareTwai instead.
+typedef Esp32HardwareCanDeprecated Esp32HardwareCan __attribute__ ((
+    deprecated("Esp32HardwareCan has been replaced with Esp32HardwareTwai.")));
+#else
+/// Esp32HardwareCan will be deprecated once arduino-esp32 2.0.0 has released.
+typedef Esp32HardwareCanDeprecated Esp32HardwareCan;
+#endif // IDF v4.3+
 
 } // namespace openmrn_arduino
 

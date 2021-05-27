@@ -89,18 +89,13 @@ extern const char* g_death_file;
 
 #define DIE(MSG) abort()
 
-#elif defined(ESP_NONOS) || defined(ARDUINO) || defined(CONFIG_IDF_TARGET)
+#elif defined(ESP_NONOS) || defined(ARDUINO) || defined(ESP32)
 
 #include <stdio.h>
 #include <assert.h>
 
-/// Checks that the value of expression x is true, else terminates the current
-/// process.
-/// @param x is the assertion expression that should evaluate to true.
 #define HASSERT(x) do { if (!(x)) { printf("Assertion failed in file " __FILE__ " line %d: assert(%s)\n", __LINE__, #x); g_death_file = __FILE__; g_death_lineno = __LINE__; assert(0); abort();} } while(0)
 
-/// Unconditionally terminates the current process with a message.
-/// @param MSG is the message to print as cause of death.
 #define DIE(MSG) do { printf("Crashed in file " __FILE__ " line %d: " MSG "\n", __LINE__); assert(0); abort(); } while(0)
 
 #else
@@ -109,9 +104,6 @@ extern const char* g_death_file;
 #include <stdio.h>
 
 #ifdef NDEBUG
-/// Checks that the value of expression x is true, else terminates the current
-/// process.
-/// @param x is the assertion expression that should evaluate to true.
 #define HASSERT(x) do { if (!(x)) { fprintf(stderr, "Assertion failed in file " __FILE__ " line %d: assert(" #x ")\n", __LINE__); g_death_file = __FILE__; g_death_lineno = __LINE__; abort();} } while(0)
 #else
 /// Checks that the value of expression x is true, else terminates the current
