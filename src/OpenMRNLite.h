@@ -38,6 +38,7 @@
 
 #include <Arduino.h>
 
+#include "CDIXMLGenerator.hxx"
 #include "freertos_drivers/arduino/Can.hxx"
 #include "freertos_drivers/arduino/WifiDefs.hxx"
 #include "openlcb/SimpleStack.hxx"
@@ -67,6 +68,7 @@ constexpr UBaseType_t OPENMRN_TASK_PRIORITY = ESP_TASK_TCPIP_PRIO - 1;
 
 #include "freertos_drivers/esp32/Esp32Gpio.hxx"
 #include "freertos_drivers/esp32/Esp32SocInfo.hxx"
+#include "freertos_drivers/esp32/Esp32Ledc.hxx"
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
 
@@ -530,7 +532,7 @@ public:
     bool create_config_descriptor_xml(
         const ConfigDef &config, const char *filename)
     {
-        return CDIHelper::create_config_descriptor_xml(
+        return CDIXMLGenerator::create_config_descriptor_xml(
             config, filename, stack());
     }
 #endif // HAVE_FILESYSTEM
