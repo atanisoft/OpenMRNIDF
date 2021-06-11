@@ -75,7 +75,7 @@
 #endif // ESP_IDF_VERSION
 
 using openlcb::NodeID;
-using openlcb::SimpleCanStack;
+using openlcb::SimpleCanStackBase;
 using openlcb::TcpAutoAddress;
 using openlcb::TcpClientConfig;
 using openlcb::TcpClientDefaultParams;
@@ -613,6 +613,14 @@ void Esp32WiFiManager::register_network_init_callback(
     networkInitCallbacks_.push_back(callback);
 }
 
+// Adds a callback which will be called when SNTP packets are processed.
+void Esp32WiFiManager::register_network_time_callback(
+    esp_network_time_callback_t callback)
+{
+    OSMutexLock l(&networkCallbacksLock_);
+    networkTimeCallbacks_.push_back(callback);
+}
+
 // If the Esp32WiFiManager is setup to manage the WiFi system, the following
 // steps are executed:
 // 1) Start the TCP/IP adapter.
@@ -921,7 +929,6 @@ void *Esp32WiFiManager::wifi_manager_task(void *param)
             wifi->stop_hub();
             wifi->stop_uplink();
             wifi->reconfigure_wifi_radio_sleep();
-#if !defined(CONFIG_IDF_TARGET_ESP32S2) && !defined(CONFIG_IDF_TARGET_ESP32C3)
             if (wifi->hubEnabled_)
             {
                 wifi->start_hub();
@@ -945,13 +952,6 @@ void *Esp32WiFiManager::wifi_manager_task(void *param)
             {
                 LOG(INFO, "[WiFi] Uplink disabled by configuration.");
             }
-#else // ESP32-S2 or ESP32-C3
-            // Hub mode is not available for the ESP32-S2 or ESP32-C3 and is
-            // hidden via CDI, so always start the uplink process.
-            LOG(INFO, "[WiFi] Starting uplink.");
-            wifi->start_uplink();
-#endif // NOT ESP32-S2 or ESP32-C3
-            
             wifi->configReloadRequested_ = false;
         }
 

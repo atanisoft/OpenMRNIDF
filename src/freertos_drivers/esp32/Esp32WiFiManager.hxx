@@ -133,7 +133,7 @@ public:
     /// @param station_ssid is the WiFi AP to connect to.
     /// @param station_password is the password for the WiFi AP being connected
     /// to.
-    /// @param stack is the SimpleCanStack for this node. Must stay alive
+    /// @param stack is the SimpleCanStackBase for this node. Must stay alive
     /// forever.
     /// @param cfg is the WiFiConfiguration instance used for this node. This
     /// will be monitored for changes and the WiFi behavior altered
@@ -267,7 +267,7 @@ public:
     /// @param port is the port for the service to be published.
     ///
     /// Note: This will schedule a @ref CallbackExecutable on the @ref Executor
-    /// used by the @ref SimpleCanStack.
+    /// used by the @ref SimpleCanStackBase.
     void mdns_publish(std::string service, uint16_t port);
 
     /// Removes the advertisement of a service via mDNS.
@@ -323,6 +323,11 @@ public:
     /// NOTE: this will not be invoked for ESP_IF_WIFI_AP since there are no
     /// events raised between enabling the interface and when it is ready.
     void register_network_init_callback(esp_network_init_callback_t callback);
+
+    /// Registers a callback for when SNTP updates are received.
+    ///
+    /// @param callback The callback to invoke when SNTP updates are received.
+    void register_network_time_callback(esp_network_time_callback_t callback);
 
     /// Time synchronization callback for SNTP.
     ///

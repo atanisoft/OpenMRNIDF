@@ -24,14 +24,59 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * \file dcc_constants.cxx
+ * \file LocalTrackIf.hxx
  *
- * Default values of constants from the dcc package.
+ * Control flow that acts as a trackInterface and sends all packets to a local
+ * fd that represents the DCC mainline, such as TivaDCC.
  *
  * @author Balazs Racz
- * @date 10 May 2014
+ * @date 24 Aug 2014
  */
 
-#include "utils/constants.hxx"
+#include <unistd.h>
+#include <fcntl.h>
 
-DEFAULT_CONST(dcc_virtual_f0_offset, 100);
+#include "openmrn_features.h"
+#ifdef OPENMRN_FEATURE_FD_CAN_DEVICE
+
+#define LOGLEVEL INFO
+
+#ifdef __FreeRTOS__
+#include "freertos/can_ioctl.h"
+#else
+#include "can_ioctl.h"
+#endif
+#include "dcc/LocalTrackIf.hxx"
+
+namespace dcc
+{
+
+LocalTrackIf::LocalTrackIf(Service *service, int pool_size)
+    : StateFlow<Buffer<dcc::Packet>, QList<1>>(service)
+    , fd_(-1)
+    , pool_(sizeof(Buffer<dcc::Packet>), pool_size)
+{
+}
+
+StateFlowBase::Action LocalTrackIf::entry()
+{
+    HASSERT(fd_ >= 0);
+    auto *p = message()->data();
+    int ret = write(fd_, p, sizeof(*p));
+    if (ret < 0) {
+        HASSERT(errno == ENOSPC);
+        ::ioctl(fd_, CAN_IOC_WRITE_ACTIVE, this);
+        return wait();
+    }
+    return finish();
+}
+
+StateFlowBase::Action LocalTrackIfSelect::entry() {
+    HASSERT(fd_ >= 0);
+    auto *p = message()->data();
+    return write_repeated(&helper_, fd_, p, sizeof(*p), STATE(finish));
+}
+
+} // namespace dcc
+
+#endif // OPENMRN_FEATURE_FD_CAN_DEVICE

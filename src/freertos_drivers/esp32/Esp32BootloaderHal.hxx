@@ -240,7 +240,7 @@ R"!^!([Bootloader] Firmware details:
 Name: %s (%s)
 ESP-IDF version: %s
 Compile timestamp: %s %s
-Target chip-id: %s (%x))!^!"
+Target chip-id: %s (%x) )!^!"
                   , app_desc.project_name, app_desc.version
                   , app_desc.idf_ver, app_desc.date, app_desc.time
                   , ESP_CHIP_ID_NAMES[image_header.chip_id]
@@ -256,7 +256,7 @@ Target chip-id: %s (%x))!^!"
             else
             {
                 LOG_ERROR("[Bootloader] Firmware does not appear to be valid "
-                          "or is for a different chip (%s/%x vs %s/%x)."
+                          "or is for a different chip (%s - %x vs %s - %x)."
                         , ESP_CHIP_ID_NAMES[image_header.chip_id]
                         , image_header.chip_id
                         , ESP_CHIP_ID_NAMES[esp_detected_chip_id]

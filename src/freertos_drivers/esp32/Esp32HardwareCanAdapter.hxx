@@ -51,8 +51,7 @@ namespace openmrn_arduino
 
 // The following types and APIs are created as aliases as a compatibility for
 // IDF v4.3+ which breaks due to driver/twai.h on the ESP32 attempting to
-// override a few types also defined in can_ioctl.h. The types below are the
-// minimum required for this code to work correctly.
+// override a few types created as part of can_ioctl.h
 typedef can_timing_config_t twai_timing_config_t;
 typedef can_filter_config_t twai_filter_config_t;
 typedef can_general_config_t twai_general_config_t;

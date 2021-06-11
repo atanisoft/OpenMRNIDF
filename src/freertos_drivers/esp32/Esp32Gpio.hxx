@@ -206,6 +206,9 @@ public:
     /// Initializes the hardware pin.
     static void hw_init()
     {
+        LOG(VERBOSE,
+            "[Esp32Gpio] Configuring output pin %d, default value: %d",
+            PIN_NUM, SAFE_VALUE);
         gpio_pad_select_gpio(PIN_NUM);
         gpio_config_t cfg;
         memset(&cfg, 0, sizeof(gpio_config_t));
@@ -227,6 +230,13 @@ public:
     static void toggle()
     {
         instance()->write(!instance()->read());
+    }
+
+    /// Sets the output pin @param value if true, output is set to HIGH, if
+    /// false, output is set to LOW.
+    static void set(bool value)
+    {
+        instance()->write(value);
     }
 
     /// @return static Gpio object instance that controls this output pin.
@@ -308,6 +318,8 @@ public:
     /// Initializes the hardware pin.
     static void hw_init()
     {
+        LOG(VERBOSE, "[Esp32Gpio] Configuring input pin %d, PUEN: %d, PDEN: %d",
+            PIN_NUM, PUEN, PDEN);
         gpio_pad_select_gpio(PIN_NUM);
         gpio_config_t cfg;
         memset(&cfg, 0, sizeof(gpio_config_t));
