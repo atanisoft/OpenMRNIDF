@@ -359,17 +359,17 @@ static ssize_t twai_vfs_write(int fd, const void *buf, size_t size)
             // since the TX buffer is not occupied, retrieve the first
             // frame and transmit it here.
             AtomicHolder h(&twai.buf_lock);
-            struct can_frame frame;
+            struct can_frame *frame = nullptr;
             twai_message_t tx_frame;
             twai_hal_frame_t hal_frame;
-            if (twai.tx_buf->get(&frame, 1))
+            if (twai.tx_buf->data_read_pointer(&frame) && frame != nullptr)
             {
                 memset(&tx_frame, 0, sizeof(twai_message_t));
-                tx_frame.identifier = frame.can_id;
-                tx_frame.extd = frame.can_eff;
-                tx_frame.rtr = frame.can_rtr;
-                tx_frame.data_length_code = frame.can_dlc;
-                memcpy(tx_frame.data, frame.data, frame.can_dlc);
+                tx_frame.identifier = frame->can_id;
+                tx_frame.extd = frame->can_eff;
+                tx_frame.rtr = frame->can_rtr;
+                tx_frame.data_length_code = frame->can_dlc;
+                memcpy(tx_frame.data, frame->data, frame->can_dlc);
                 twai_hal_format_frame(&tx_frame, &hal_frame);
                 twai_hal_set_tx_buffer_and_transmit(&twai.context, &hal_frame);
             }
@@ -692,6 +692,7 @@ static inline uint32_t twai_tx_frame()
     {
         ESP_EARLY_LOGV(TWAI_LOG_TAG, "TX-OK");
         twai.stats.tx_success++;
+        twai.tx_buf->consume(1);
     }
     else
     {
@@ -701,7 +702,7 @@ static inline uint32_t twai_tx_frame()
 
     // Check if we have a pending frame to transmit in the queue
     struct can_frame *can_frame = nullptr;
-    if (twai.tx_buf->data_read_pointer(&can_frame))
+    if (twai.tx_buf->data_read_pointer(&can_frame) && can_frame != nullptr)
     {
         twai_message_t tx_frame;
         twai_hal_frame_t hal_frame;
@@ -713,7 +714,7 @@ static inline uint32_t twai_tx_frame()
         memcpy(tx_frame.data, can_frame->data, can_frame->can_dlc);
         twai_hal_format_frame(&tx_frame, &hal_frame);
         twai_hal_set_tx_buffer_and_transmit(&twai.context, &hal_frame);
-        return twai.tx_buf->consume(1);
+        return 1;
     }
     return 0;
 }
