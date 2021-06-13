@@ -169,6 +169,9 @@ typedef struct
     bool non_blocking;
 
 #if CONFIG_VFS_SUPPORT_SELECT
+    /// Lock protecting all VFS select() cached data.
+    Atomic select_lock;
+
     /// VFS semaphore that can be used to prematurely wakeup a call to select.
     /// NOTE: This is only valid after VFS has called @ref start_select and is
     /// invalid after VFS calls @ref end_select.
@@ -273,6 +276,7 @@ static inline void twai_purge_rx_queue()
         n->notify();
     }
 #if CONFIG_VFS_SUPPORT_SELECT
+    AtomicHolder l(&twai.select_lock);
     if (FD_ISSET(TWAI_VFS_FD, &twai.exceptfds_orig))
     {
         FD_SET(TWAI_VFS_FD, twai.exceptfds);
@@ -298,6 +302,7 @@ static inline void twai_purge_tx_queue()
         n->notify();
     }
 #if CONFIG_VFS_SUPPORT_SELECT
+    AtomicHolder l(&twai.select_lock);
     if (FD_ISSET(TWAI_VFS_FD, &twai.exceptfds_orig))
     {
         FD_SET(TWAI_VFS_FD, twai.exceptfds);
@@ -576,6 +581,7 @@ static esp_err_t twai_vfs_start_select(int nfds, fd_set *readfds,
                                        esp_vfs_select_sem_t sem,
                                        void **end_select_args)
 {
+    AtomicHolder l(&twai.select_lock);
     // zero the cached copy of the fd_sets before setting the incoming copy in
     // case the TWAI VFS FD is not set so we do not raise the alert when there
     // is an interesting event.
@@ -622,6 +628,12 @@ static esp_err_t twai_vfs_start_select(int nfds, fd_set *readfds,
 /// @param end_select_args is any arguments provided in vfs_start_select().
 static esp_err_t twai_vfs_end_select(void *end_select_args)
 {
+    AtomicHolder l(&twai.select_lock);
+    // zero the cached copy of the fd_sets to prevent triggering the VFS wakeup
+    // since the select() has ended.
+    FD_ZERO(&twai.readfds_orig);
+    FD_ZERO(&twai.writefds_orig);
+    FD_ZERO(&twai.exceptfds_orig);
     return ESP_OK;
 }
 
@@ -738,6 +750,7 @@ static void twai_isr(void *arg)
         twai_hal_recover_from_reset(&twai.context);
         twai.stats.rx_lost += twai_hal_get_reset_lost_rx_cnt(&twai.context);
 #if CONFIG_VFS_SUPPORT_SELECT
+        AtomicHolder l(&twai.select_lock);
         if (FD_ISSET(TWAI_VFS_FD, &twai.exceptfds_orig))
         {
             FD_SET(TWAI_VFS_FD, twai.exceptfds);
@@ -751,6 +764,7 @@ static void twai_isr(void *arg)
     if ((events & TWAI_HAL_EVENT_RX_BUFF_FRAME) && twai_rx_frames())
     {
 #if CONFIG_VFS_SUPPORT_SELECT
+        AtomicHolder l(&twai.select_lock);
         if (FD_ISSET(TWAI_VFS_FD, &twai.readfds_orig))
         {
             FD_SET(TWAI_VFS_FD, twai.readfds);
@@ -769,6 +783,7 @@ static void twai_isr(void *arg)
     if ((events & TWAI_HAL_EVENT_TX_BUFF_FREE) && twai_tx_frame())
     {
 #if CONFIG_VFS_SUPPORT_SELECT
+        AtomicHolder l(&twai.select_lock);
         if (FD_ISSET(TWAI_VFS_FD, &twai.writefds_orig))
         {
             FD_SET(TWAI_VFS_FD, twai.writefds);
