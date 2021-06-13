@@ -585,10 +585,10 @@ private:
     static constexpr uint8_t MAX_HOSTNAME_LENGTH = 32;
 
     /// Constant used to determine if the Uplink mode should be enabled.
-    static constexpr uint8_t CONN_MODE_UPLINK_BIT = BIT(1);
+    static constexpr uint8_t CONN_MODE_UPLINK_BIT = BIT(0);
 
     /// Constnat used to determine if the Hub mode should be enabled.
-    static constexpr uint8_t CONN_MODE_HUB_BIT = BIT(2);
+    static constexpr uint8_t CONN_MODE_HUB_BIT = BIT(1);
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
     /// Network interfaces that are managed by Esp32WiFiManager.
