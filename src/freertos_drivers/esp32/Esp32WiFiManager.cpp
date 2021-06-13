@@ -1117,10 +1117,26 @@ void Esp32WiFiManager::mdns_publish(string service, const uint16_t port)
             // Send it back onto the scheduler to be retried
             wifi_mgr->mdns_publish(service, port);
         }
+        else if (res == ESP_ERR_INVALID_ARG)
+        {
+            // ESP_ERR_INVALID_ARG can be returned if the mDNS server is not UP
+            // which we have previously checked via mdnsInitialized_, this can
+            // also be returned if the service name has already been published
+            // since the server came up. If we see this error code returned we
+            // should try unpublish and then publish again.
+            wifi_mgr->mdns_unpublish(service);
+            wifi_mgr->mdns_publish(service, port);
+        }
+        else if (res == ESP_OK)
+        {
+            LOG(INFO, "[mDNS] Advertising %s.%s:%d.", service_name.c_str(),
+                protocol_name.c_str(), port);
+        }
         else
         {
-            LOG(INFO, "[mDNS] Advertising %s.%s:%d.", service_name.c_str()
-              , protocol_name.c_str(), port);
+            LOG_ERROR("[mDNS] Failed to publish: %s.%s:%d",
+                      service_name.c_str(), protocol_name.c_str(), port);
+            wifi_mgr->mdns_publish(service, port);
         }
     }));
 }
@@ -1144,7 +1160,8 @@ void Esp32WiFiManager::mdns_unpublish(string service)
       , service_name.c_str(), protocol_name.c_str());
     esp_err_t res =
         mdns_service_remove(service_name.c_str(), protocol_name.c_str());
-    LOG(VERBOSE, "[mDNS] mdns_service_remove: %s.", esp_err_to_name(res));
+    LOG(INFO, "[mDNS] mdns_service_remove: %s.", esp_err_to_name(res));
+    // TODO: should we queue up unpublish requests for future retries?
 }
 
 // Initializes the mDNS system on the ESP32.
