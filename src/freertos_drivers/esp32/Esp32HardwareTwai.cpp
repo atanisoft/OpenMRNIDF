@@ -390,12 +390,7 @@ static ssize_t twai_vfs_write(int fd, const void *buf, size_t size)
 
     if (!sent)
     {
-        if (twai.non_blocking)
-        {
-            return 0;
-        }
         errno = EWOULDBLOCK;
-        return -1;
     }
     LOG(VERBOSE, "ESP-TWAI: write() %d", sent * sizeof(struct can_frame));
     return sent * sizeof(struct can_frame);
