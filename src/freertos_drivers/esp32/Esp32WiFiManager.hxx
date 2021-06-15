@@ -145,6 +145,8 @@ public:
     /// configured softap_ssid, softap_password, softap_channel, and
     /// softap_auth_mode. When set to WIFI_MODE_APSTA both the SoftAP and
     /// STATION interfaces will be enabled.
+    /// @param connection_mode is used as the default value for the CDI element
+    /// of the same name which controls the uplink and hub operation.
     /// @param sntp_server is the SNTP server to poll for time updates, this
     /// defaults to pool.ntp.org.
     /// @param timezone is the POSIX formatted TimeZone of the node, this
@@ -166,6 +168,7 @@ public:
                    , openlcb::SimpleStackBase *stack
                    , const WiFiConfiguration &cfg
                    , wifi_mode_t wifi_mode = WIFI_MODE_STA
+                   , uint8_t connection_mode = CONN_MODE_UPLINK_BIT
                    , const char *hostname_prefix = "esp32_"
                    , const char *sntp_server = "pool.ntp.org"
                    , const char *timezone = "UTC0"

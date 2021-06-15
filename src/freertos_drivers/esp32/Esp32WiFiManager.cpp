@@ -291,16 +291,17 @@ private:
 Esp32WiFiManager::Esp32WiFiManager(const char *station_ssid
     , const char *station_password, openlcb::SimpleStackBase *stack
     , const WiFiConfiguration &cfg, wifi_mode_t wifi_mode
-    , const char *hostname_prefix, const char *sntp_server
-    , const char *timezone, bool sntp_enabled, uint8_t softap_channel
-    , wifi_auth_mode_t softap_auth_mode, const char *softap_ssid
-    , const char *softap_password)
+    , uint8_t connection_mode, const char *hostname_prefix
+    , const char *sntp_server, const char *timezone, bool sntp_enabled
+    , uint8_t softap_channel, wifi_auth_mode_t softap_auth_mode
+    , const char *softap_ssid, const char *softap_password)
     : DefaultConfigUpdateListener(), hostname_(hostname_prefix)
     , ssid_(station_ssid), password_(station_password), cfg_(cfg)
     , stack_(stack), wifiMode_(wifi_mode), softAPChannel_(softap_channel)
     , softAPAuthMode_(softap_auth_mode), softAPName_(softap_ssid)
     , softAPPassword_(softap_password), sntpEnabled_(sntp_enabled)
     , sntpServer_(sntp_server), timeZone_(timezone)
+    , connectionMode_(connection_mode)
 {
     // Extend the capacity of the hostname to make space for the node-id and
     // underscore.
@@ -439,7 +440,9 @@ void Esp32WiFiManager::factory_reset(int fd)
 
     // General WiFi configuration settings.
     CDI_FACTORY_RESET(cfg_.sleep);
-    CDI_FACTORY_RESET(cfg_.connection_mode);
+    // NOTE: this is not using CDI_FACTORY_RESET so consumers can provide a
+    // default value as part of constructing the Esp32WiFiManager instance.
+    cfg_.connection_mode().write(fd, connectionMode_);
 
     // Hub specific configuration settings.
     CDI_FACTORY_RESET(cfg_.hub().port);
