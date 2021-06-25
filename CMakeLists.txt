@@ -1,22 +1,22 @@
 set(SOURCE_DIRS
-    "src/dcc"
-    "src/executor"
-    "src/freertos_drivers/esp32"
-    "src/freertos_drivers/arduino"
-    "src/openlcb"
-    "src/os"
-    "src/utils"
+    src/dcc
+    src/executor
+    src/freertos_drivers/esp32
+    src/freertos_drivers/arduino
+    src/openlcb
+    src/os
+    src/utils
 )
 
 if(CONFIG_ENABLE_ARDUINO_DEPENDS)
-    list(APPEND SOURCE_DIRS "src")
+    list(APPEND SOURCE_DIRS src)
 endif()
 
 set(IDF_DEPS
-    "driver"
-    "heap"
-    "vfs"
-    "mdns")
+    driver
+    heap
+    vfs
+    mdns)
 
 idf_component_register(SRC_DIRS "${SOURCE_DIRS}"
                        INCLUDE_DIRS "src"
@@ -44,7 +44,7 @@ set_source_files_properties(src/freertos_drivers/arduino/CpuLoad.cpp PROPERTIES 
 set_source_files_properties(src/freertos_drivers/esp32/Esp32WiFiManager.cpp PROPERTIES COMPILE_FLAGS
     "-Wno-ignored-qualifiers -DESP32_WIFIMGR_SOCKETPARAMS_LOG_LEVEL=VERBOSE -DESP32_WIFIMGR_MDNS_LOOKUP_LOG_LEVEL=VERBOSE")
 set_source_files_properties(src/freertos_drivers/esp32/Esp32WS2812.cpp PROPERTIES COMPILE_FLAGS -Wno-missing-field-initializers)
-set_source_files_properties(src/freertos_drivers/esp32/Esp32HardwareTwai.cpp PROPERTIES COMPILE_FLAGS "-Wno-class-memaccess")
+set_source_files_properties(src/freertos_drivers/esp32/Esp32HardwareTwai.cpp PROPERTIES COMPILE_FLAGS -Wno-class-memaccess)
 set_source_files_properties(src/openlcb/AliasAllocator.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/openlcb/BroadcastTime.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/openlcb/BroadcastTimeClient.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
