@@ -339,6 +339,15 @@ public:
     /// NOTE: This is not intended to be called by the user.
     void sync_time(time_t now);
 
+    /// @return the Executor used by the Esp32WiFiManager.
+    ///
+    /// This can be used for other background tasks that should run
+    /// periodically but not from the main OpenMRN stack Executor.
+    Executor<1> *executor()
+    {
+        return &executor_;
+    }
+
 private:
     /// Default constructor.
     Esp32WiFiManager();
