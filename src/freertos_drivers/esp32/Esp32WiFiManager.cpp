@@ -144,7 +144,7 @@ static constexpr UBaseType_t EXECUTOR_TASK_PRIORITY = 3;
 static constexpr uint32_t WIFI_TASK_STACK_SIZE = 2560L;
 
 /// Stack size for the background task executor.
-static constexpr uint32_t EXECUTOR_TASK_STACK_SIZE = 2560L;
+static constexpr uint32_t EXECUTOR_TASK_STACK_SIZE = 5120L;
 
 /// Interval at which to check the WiFi connection status.
 static constexpr TickType_t WIFI_CONNECT_CHECK_INTERVAL = pdMS_TO_TICKS(5000);
