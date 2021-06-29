@@ -37,6 +37,8 @@
 
 #include "freertos_drivers/esp32/Esp32WiFiConfiguration.hxx"
 #include "executor/Executor.hxx"
+#include "executor/Service.hxx"
+#include "executor/StateFlow.hxx"
 #include "openlcb/ConfigRepresentation.hxx"
 #include "openlcb/ConfiguredTcpConnection.hxx"
 #include "utils/ConfigUpdateListener.hxx"
@@ -119,7 +121,7 @@ typedef std::function<void(time_t)> esp_network_time_callback_t;
 /// This class provides a simple way for ESP32 nodes to manage the WiFi and
 /// mDNS systems of the ESP32, the node being a hub and connecting to an
 /// uplink node to participate in the CAN bus.
-class Esp32WiFiManager : public DefaultConfigUpdateListener
+class Esp32WiFiManager : public DefaultConfigUpdateListener, public Service
 {
 public:
     /// Constructor.
@@ -352,16 +354,6 @@ private:
     /// Default constructor.
     Esp32WiFiManager();
 
-    /// Starts the WiFi system and initiates the SSID connection process.
-    ///
-    /// Note: This is a blocking call and will reboot the node if the WiFi
-    /// connection is not successful after ~3min.
-    void start_wifi_system();
-
-    /// Starts the Esp32WiFiManager, this manages the WiFi subsystem as well as
-    /// all interactions with other nodes.
-    void start_wifi_task();
-
     /// Background task used by the Esp32WiFiManager to maintain health of any
     /// connections to other nodes.
     /// @param param is a pointer to the Esp32WiFiManager instance.
@@ -460,10 +452,6 @@ private:
     /// the transmit power will be configured to the maximum value.
     void reconfigure_wifi_tx_power();
 
-    /// Handle for the wifi_manager_task that manages the WiFi stack, including
-    /// periodic health checks of the connected hubs or clients.
-    os_thread_t wifiTaskHandle_;
-
     /// Dynamically generated hostname for this node, esp32_{node-id}. This is
     /// also used for the SoftAP SSID name (if enabled).
     std::string hostname_;
@@ -525,12 +513,6 @@ private:
     /// Calculated CRC-32 of cfg_ data. Used to detect changes in configuration
     /// which may require the wifi_manager_task to reload config.
     uint32_t configCrc32_{0};
-
-    /// Internal flag to request the wifi_manager_task reload configuration.
-    bool configReloadRequested_{true};
-
-    /// Internal flag to request the wifi_manager_task to shutdown.
-    bool shutdownRequested_{false};
 
     /// If true, the esp32 will block startup until the SSID connection has
     /// successfully completed and upon failure (or timeout) the esp32 will be
@@ -599,7 +581,7 @@ private:
     /// Constant used to determine if the Uplink mode should be enabled.
     static constexpr uint8_t CONN_MODE_UPLINK_BIT = BIT(0);
 
-    /// Constnat used to determine if the Hub mode should be enabled.
+    /// Constant used to determine if the Hub mode should be enabled.
     static constexpr uint8_t CONN_MODE_HUB_BIT = BIT(1);
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
@@ -609,6 +591,70 @@ private:
         nullptr, nullptr
     };
 #endif // IDF v4.1+
+
+    /// StateFlow that is responsible for startup and maintenance of the WiFi
+    /// stack.
+    class WiFiStackFlow : public StateFlowBase
+    {
+    public:
+        /// Constructor.
+        ///
+        /// @param parent @ref Esp32WiFiManager instance that this flow should
+        /// maintain.
+        WiFiStackFlow(Esp32WiFiManager *parent);
+    private:
+        /// @ref StateFlowTimer used for periodic wakeup of
+        /// @ref wait_for_connect.
+        StateFlowTimer timer_{this};
+
+        /// @ref Esp32WiFiManager instance that is being maintained.
+        Esp32WiFiManager * parent_;
+
+        /// Number of attempts to connect to the SSID before timing out. Only
+        /// applicable for the station interface via @ref wait_for_connect.
+        uint8_t wifiConnectAttempts_{0};
+
+        /// Bit mask used for checking WiFi connection process events in
+        /// @ref wait_for_connect.
+        uint32_t wifiConnectBitMask_;
+
+        /// Initial state for this flow.
+        STATE_FLOW_STATE(startup);
+
+        /// No-op state used when the WiFi system is not enabled and events are
+        /// received.
+        STATE_FLOW_STATE(noop);
+
+        /// Initializes the ESP32 WiFi interfaces that are maintained by this
+        /// flow.
+        STATE_FLOW_STATE(init_interface);
+
+        /// Initializes the ESP32 WiFi subsystems prior to configuration.
+        STATE_FLOW_STATE(init_wifi);
+
+        /// Configures the ESP32 WiFi Station interface.
+        STATE_FLOW_STATE(configure_station);
+
+        /// Configures the ESP32 WiFi SoftAP interface.
+        STATE_FLOW_STATE(configure_softap);
+
+        /// Starts the ESP32 WiFi subsystem which will trigger the startup of
+        /// the SoftAP interface (if configured) and Station interface (if
+        /// configured).
+        STATE_FLOW_STATE(start_wifi);
+
+        /// Re-entrant state that periodically checks if the Station interface
+        /// has successfully connected to the SSID and if it has received an IP
+        /// address.
+        STATE_FLOW_STATE(wait_for_connect);
+
+        /// State which processes a configuration reload or the initial
+        /// configuration of the hub and uplink tasks (if either are enabled).
+        STATE_FLOW_STATE(reload);
+    };
+
+    /// Instance of @ref WiFiStackFlow used for WiFi maintenance.
+    WiFiStackFlow wifiStackFlow_{this};
 
     DISALLOW_COPY_AND_ASSIGN(Esp32WiFiManager);
 };
