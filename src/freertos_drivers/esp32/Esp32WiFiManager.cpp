@@ -895,13 +895,20 @@ void Esp32WiFiManager::on_station_disconnected(uint8_t reason)
     // flag to indicate that we should print the reconnecting log message.
     bool was_previously_connected = false;
 
+    // capture the current state so we can check if we were already connected
+    // with an IP address or still in the connecting phase.
+    EventBits_t event_bits = xEventGroupGetBits(wifiStatusEventGroup_);
+
     // Check if we have already connected, this event can be raised
     // even before we have successfully connected during the SSID
     // connect process.
-    if (xEventGroupGetBits(wifiStatusEventGroup_) & WIFI_CONNECTED_BIT)
+    if (event_bits & WIFI_CONNECTED_BIT)
     {
-        // track that we were connected previously.
-        was_previously_connected = true;
+        // If we were previously connected and had an IP address we should
+        // count that as previously connected, otherwise we will just reconnect
+        // and not wake up the state flow since it may be waiting for an event
+        // and will wakeup on it's own.
+        was_previously_connected = event_bits & WIFI_GOTIP_BIT;
 
         LOG(INFO, "[WiFi] Lost connection to SSID: %s (reason:%d)",
             ssid_.c_str(), reason);
@@ -909,9 +916,6 @@ void Esp32WiFiManager::on_station_disconnected(uint8_t reason)
         xEventGroupClearBits(wifiStatusEventGroup_, WIFI_CONNECTED_BIT);
         // Clear the flag that indicates we have an IPv4 address.
         xEventGroupClearBits(wifiStatusEventGroup_, WIFI_GOTIP_BIT);
-
-        // wake up the stack to process the event
-        wifiStackFlow_.notify();
     }
 
     // If we are managing the WiFi and MDNS systems we need to
@@ -920,6 +924,7 @@ void Esp32WiFiManager::on_station_disconnected(uint8_t reason)
     {
         LOG(INFO, "[WiFi] Attempting to reconnect to SSID: %s.",
             ssid_.c_str());
+        wifiStackFlow_.notify();
     }
     else
     {
