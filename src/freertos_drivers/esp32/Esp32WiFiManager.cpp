@@ -159,13 +159,6 @@ static constexpr int WIFI_GOTIP_BIT = BIT1;
 /// seconds.
 static constexpr uint8_t MAX_CONNECTION_CHECK_ATTEMPTS = 36;
 
-/// This is the number of consecutive IP addresses which will be available in
-/// the SoftAP DHCP server IP pool. These will be allocated immediately
-/// following the SoftAP IP address (default is 192.168.4.1). Default number to
-/// reserve is 48 IP addresses. Only four stations can be connected to the
-/// ESP32 SoftAP at any single time.
-static constexpr uint8_t SOFTAP_IP_RESERVATION_BLOCK_SIZE = 48;
-
 /// Adapter class to load/store configuration via CDI
 class Esp32SocketParams : public DefaultSocketClientParams
 {
