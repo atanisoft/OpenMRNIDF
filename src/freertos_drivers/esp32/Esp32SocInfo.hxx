@@ -47,6 +47,8 @@
 #include <esp32s3/rom/rtc.h>
 #elif defined(CONFIG_IDF_TARGET_ESP32C3)
 #include <esp32c3/rom/rtc.h>
+#elif defined(CONFIG_IDF_TARGET_ESP32H2)
+#include <esp32h2/rom/rtc.h>
 #else
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
 #include <esp32/rom/rtc.h>
@@ -95,6 +97,64 @@ static const char * const ESP32_SOC_RESET_REASONS[] =
     "software reset",           // SW_RESET                 3
     "unknown",                  // no key                   4
     "deep sleep reset",         // DEEPSLEEP_RESET          5
+    "unknown",                  // no key                   6
+    "watchdog reset (group0)",  // TG0WDT_SYS_RESET         7
+    "watchdog reset (group1)",  // TG1WDT_SYS_RESET         8
+    "RTC system reset",         // RTCWDT_SYS_RESET         9
+    "Intrusion test reset",     // INTRUSION_RESET          10
+    "WDT Timer group0 reset",   // TG0WDT_CPU_RESET         11
+    "software reset (CPU)",     // RTC_SW_CPU_RESET         12
+    "RTC WDT reset",            // RTCWDT_CPU_RESET         13
+    "unknown",                  // no key                   14
+    "Brownout reset",           // RTCWDT_BROWN_OUT_RESET   15
+    "RTC Reset (Normal)",       // RTCWDT_RTC_RESET         16
+    "WDT Timer group1 reset",   // TG1WDT_CPU_RESET         17
+    "WDT Reset",                // SUPER_WDT_RESET          18
+    "RTC Reset (Glitch)",       // GLITCH_RTC_RESET         19
+    "eFuse Reset",              // EFUSE_RESET              20
+    "USB UART Reset",           // USB_UART_CHIP_RESET      21
+    "USB JTAG Reset",           // USB_JTAG_CHIP_RESET      22
+    "Power Glitch Reset",       // POWER_GLITCH_RESET       23
+};
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+/// ESP32-S3 SoC reset reasons.
+static const char * const ESP32_SOC_RESET_REASONS[] =
+{
+    "unknown",                  // NO_MEAN                  0
+    "power on reset",           // POWERON_RESET            1
+    "unknown",                  // no key                   2
+    "software reset",           // RTC_SW_SYS_RESET         3
+    "unknown",                  // no key                   4
+    "deep sleep reset",         // DEEPSLEEP_RESET          5
+    "unknown",                  // no key                   6
+    "watchdog reset (group0)",  // TG0WDT_SYS_RESET         7
+    "watchdog reset (group1)",  // TG1WDT_SYS_RESET         8
+    "RTC system reset",         // RTCWDT_SYS_RESET         9
+    "Intrusion test reset",     // INTRUSION_RESET          10
+    "WDT Timer group0 reset",   // TG0WDT_CPU_RESET         11
+    "software reset (CPU)",     // RTC_SW_CPU_RESET         12
+    "RTC WDT reset",            // RTCWDT_CPU_RESET         13
+    "unknown",                  // no key                   14
+    "Brownout reset",           // RTCWDT_BROWN_OUT_RESET   15
+    "RTC Reset (Normal)",       // RTCWDT_RTC_RESET         16
+    "WDT Timer group1 reset",   // TG1WDT_CPU_RESET         17
+    "WDT Reset",                // SUPER_WDT_RESET          18
+    "RTC Reset (Glitch)",       // GLITCH_RTC_RESET         19
+    "eFuse Reset",              // EFUSE_RESET              20
+    "USB UART Reset",           // USB_UART_CHIP_RESET      21
+    "USB JTAG Reset",           // USB_JTAG_CHIP_RESET      22
+    "Power Glitch Reset",       // POWER_GLITCH_RESET       23
+};
+#elif defined(CONFIG_IDF_TARGET_ESP32H2)
+/// ESP32-H2 SoC reset reasons.
+static const char * const ESP32_SOC_RESET_REASONS[] =
+{
+    "unknown",                  // NO_MEAN                  0
+    "power on reset",           // POWERON_RESET            1
+    "unknown",                  // no key                   2
+    "software reset",           // SW_RESET                 3
+    "unknown",                  // no key                   4
+    "deep sleep reset",         // DEEPSLEEP_RESET          5
     "reset (SLC)",              // SDIO_RESET               6
     "watchdog reset (group0)",  // TG0WDT_SYS_RESET         7
     "watchdog reset (group1)",  // TG1WDT_SYS_RESET         8
@@ -108,8 +168,13 @@ static const char * const ESP32_SOC_RESET_REASONS[] =
     "RTC Reset (Normal)",       // RTCWDT_RTC_RESET         16
     "WDT Timer group1 reset",   // TG1WDT_CPU_RESET         17
     "WDT Reset",                // SUPER_WDT_RESET          18
+    "RTC Reset (Glitch)",       // GLITCH_RTC_RESET         19
+    "eFuse Reset",              // EFUSE_RESET              20
+    "USB UART Reset",           // USB_UART_CHIP_RESET      21
+    "USB JTAG Reset",           // USB_JTAG_CHIP_RESET      22
+    "Power Glitch Reset",       // POWER_GLITCH_RESET       23
+    "JTAG Reset",               // JTAG_RESET               24
 };
-#elif defined(CONFIG_IDF_TARGET_ESP32S3)
 #else
 /// ESP32 SoC reset reasons.
 static const char * const ESP32_SOC_RESET_REASONS[] =
@@ -158,7 +223,13 @@ public:
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
             chip_info.model == CHIP_ESP32 ? "ESP32" :
             chip_info.model == CHIP_ESP32S2 ? "ESP32-S2" :
-            chip_info.model == CHIP_ESP32C3 ? "ESP32-C3" : "unknown",
+            chip_info.model == CHIP_ESP32C3 ? "ESP32-C3" :
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,4,0)
+            chip_info.model == CHIP_ESP32S3 ? "ESP32-S3" :
+            chip_info.model == CHIP_ESP32H2 ? "ESP32-H2" : "unknown",
+#else // IDF v4.3 (or earlier)
+            "unknown",
+#endif // IDF v4.4+
 #else
             "ESP32",
 #endif // IDF v4.3+

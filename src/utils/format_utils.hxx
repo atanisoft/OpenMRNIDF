@@ -92,41 +92,41 @@ char* int64_integer_to_buffer_hex(int64_t value, char* buffer);
  * @param padding number of bytes that the resulting string should be.
  * @returns the pointer to the null character at the end of the rendering.
  */
-string integer_to_string(int value, unsigned padding = 0);
+std::string integer_to_string(int value, unsigned padding = 0);
 
 /** Renders an uint64_t to std::string, left-justified.
  * @param value will be rendered into the buffer.
  * @param padding number of bytes that the resulting string should be.
  * @returns the pointer to the null character at the end of the rendering.
  */
-string uint64_to_string(uint64_t value, unsigned padding = 0);
+std::string uint64_to_string(uint64_t value, unsigned padding = 0);
 
 /** Renders an int64_t to std::string, left-justified.
  * @param value will be rendered into the buffer.
  * @param padding number of bytes that the resulting string should be.
  * @returns the pointer to the null character at the end of the rendering.
  */
-string int64_to_string(int64_t value, unsigned padding = 0);
+std::string int64_to_string(int64_t value, unsigned padding = 0);
 
 /** Renders an uint64_t to std::string, left-justified.
  * @param value will be rendered into the buffer.
  * @param padding number of bytes that the resulting string should be.
  * @returns the pointer to the null character at the end of the rendering.
  */
-string uint64_to_string_hex(uint64_t value, unsigned padding = 0);
+std::string uint64_to_string_hex(uint64_t value, unsigned padding = 0);
 
 /** Renders an int64_t to std::string, left-justified.
  * @param value will be rendered into the buffer.
  * @param padding number of bytes that the resulting string should be.
  * @returns the pointer to the null character at the end of the rendering.
  */
-string int64_to_string_hex(int64_t value, unsigned padding = 0);
+std::string int64_to_string_hex(int64_t value, unsigned padding = 0);
 
 /// Converts a (binary) string into a sequence of hex digits.
 /// @param arg input string
 /// @return string twice the length of arg with hex digits representing the
 /// original data.
-string string_to_hex(const string& arg);
+std::string string_to_hex(const std::string& arg);
 
 /// Formats a MAC address to string. Works both for Ethernet addresses as well
 /// as for OpenLCB node IDs.
@@ -139,7 +139,7 @@ string string_to_hex(const string& arg);
 /// @return a string containing a colon-separated hexadecimal printout of the
 /// given MAC address.
 ///
-string mac_to_string(uint8_t mac[6], bool colons = true);
+std::string mac_to_string(uint8_t mac[6], bool colons = true);
 
 /// Formats an IPv4 address to string.
 ///
@@ -149,7 +149,7 @@ string mac_to_string(uint8_t mac[6], bool colons = true);
 /// @return a string containing a dot-separated printout of the
 /// given IPv4 address.
 ///
-string ipv4_to_string(uint8_t ip[4]);
+std::string ipv4_to_string(uint8_t ip[4]);
 
 /// Formats an IPv4 address to string.
 ///
@@ -159,7 +159,7 @@ string ipv4_to_string(uint8_t ip[4]);
 /// @return a string containing a dot-separated printout of the
 /// given IPv4 address.
 ///
-inline string ipv4_to_string(uint32_t ip)
+inline std::string ipv4_to_string(uint32_t ip)
 {
     return ipv4_to_string((uint8_t*)&ip);
 }
