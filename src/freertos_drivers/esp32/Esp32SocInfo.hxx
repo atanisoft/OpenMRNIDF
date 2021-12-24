@@ -220,19 +220,24 @@ public:
             ESP32_SOC_RESET_REASONS[reset_reason]);
         LOG(INFO,
             "[SoC] model:%s,rev:%d,cores:%d,flash:%s,WiFi:%s,BLE:%s,BT:%s",
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,0,0)
             chip_info.model == CHIP_ESP32 ? "ESP32" :
             chip_info.model == CHIP_ESP32S2 ? "ESP32-S2" :
-            chip_info.model == CHIP_ESP32C3 ? "ESP32-C3" :
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,4,0)
+            chip_info.model == CHIP_ESP32S3 ? "ESP32-S3" :
+            chip_info.model == CHIP_ESP32H2 ? "ESP32-H2" :
+            chip_info.model == CHIP_ESP8684 ? "ESP8684" : "unknown",
+#elif ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,4,0)
+            chip_info.model == CHIP_ESP32 ? "ESP32" :
+            chip_info.model == CHIP_ESP32S2 ? "ESP32-S2" :
             chip_info.model == CHIP_ESP32S3 ? "ESP32-S3" :
             chip_info.model == CHIP_ESP32H2 ? "ESP32-H2" : "unknown",
-#else // IDF v4.3 (or earlier)
-            "unknown",
-#endif // IDF v4.4+
-#else
+#elif ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
+            chip_info.model == CHIP_ESP32 ? "ESP32" :
+            chip_info.model == CHIP_ESP32S2 ? "ESP32-S2" :
+            chip_info.model == CHIP_ESP32C3 ? "ESP32-C3" : "unknown",
+#else // IDF v4.1, v4.2, v3.x
             "ESP32",
-#endif // IDF v4.3+
+#endif // IDF v5+
             chip_info.revision, chip_info.cores,
             chip_info.features & CHIP_FEATURE_EMB_FLASH ? "Yes" : "No",
             chip_info.features & CHIP_FEATURE_WIFI_BGN ? "Yes" : "No",

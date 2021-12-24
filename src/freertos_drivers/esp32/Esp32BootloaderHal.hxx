@@ -509,11 +509,6 @@ void esp32_bootloader_run(uint64_t id, gpio_num_t rx, gpio_num_t tx,
         case CHIP_ESP32C3:
             esp_bootloader_state.chip_id = ESP_CHIP_ID_ESP32C3;
             break;
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,4,0)
-        case CHIP_ESP32H2:
-            esp_bootloader_state.chip_id = ESP_CHIP_ID_ESP32H2;
-            break;
-#endif // IDF v4.4+
         default:
             LOG(FATAL, "[Bootloader] Unknown Chip ID: %x", chip_info.model);
             esp_bootloader_state.chip_id = ESP_CHIP_ID_INVALID;

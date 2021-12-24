@@ -14,9 +14,15 @@ endif()
 
 set(IDF_DEPS
     driver
+    esp_system
     heap
     vfs
     mdns)
+
+# starting in IDF v5 esp_ipc component has been merged into esp_system
+if (IDF_VERSION_MAJOR LESS 5)
+    list(APPEND IDF_DEPS esp_ipc)
+endif()
 
 idf_component_register(SRC_DIRS "${SOURCE_DIRS}"
                        INCLUDE_DIRS "src"
