@@ -67,6 +67,7 @@
 #include <fcntl.h>
 #include <hal/twai_types.h>
 #include <hal/twai_hal.h>
+#include <soc/gpio_sig_map.h>
 
 #include "can_frame.h"
 #include "can_ioctl.h"

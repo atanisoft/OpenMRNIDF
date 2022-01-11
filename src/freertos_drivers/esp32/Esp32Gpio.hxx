@@ -42,7 +42,13 @@
 
 #include <driver/adc.h>
 #include <driver/gpio.h>
+#include <esp_idf_version.h>
 #include <soc/adc_channel.h>
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,0,0)
+#include <esp_rom_gpio.h>
+#include <soc/gpio_struct.h>
+#endif // IDF v5+
 
 #if defined(CONFIG_IDF_TARGET_ESP32C3)
 /// Helper macro to test if a pin has been configured for output.
@@ -221,7 +227,11 @@ public:
         LOG(VERBOSE,
             "[Esp32Gpio] Configuring output pin %d, default value: %d",
             PIN_NUM, SAFE_VALUE);
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,0,0)
+        esp_rom_gpio_pad_select_gpio(PIN_NUM);
+#else
         gpio_pad_select_gpio(PIN_NUM);
+#endif
         gpio_config_t cfg;
         memset(&cfg, 0, sizeof(gpio_config_t));
         cfg.pin_bit_mask = BIT64(PIN_NUM);
