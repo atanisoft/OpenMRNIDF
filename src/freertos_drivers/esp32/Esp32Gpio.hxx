@@ -347,7 +347,11 @@ public:
     {
         LOG(VERBOSE, "[Esp32Gpio] Configuring input pin %d, PUEN: %d, PDEN: %d",
             PIN_NUM, PUEN, PDEN);
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,0,0)
+        esp_rom_gpio_pad_select_gpio(PIN_NUM);
+#else
         gpio_pad_select_gpio(PIN_NUM);
+#endif
         gpio_config_t cfg;
         memset(&cfg, 0, sizeof(gpio_config_t));
         cfg.pin_bit_mask = BIT64(PIN_NUM);
