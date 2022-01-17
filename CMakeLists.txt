@@ -13,6 +13,7 @@ if(CONFIG_ENABLE_ARDUINO_DEPENDS)
 endif()
 
 set(IDF_DEPS
+    app_update
     driver
     esp_system
     heap
