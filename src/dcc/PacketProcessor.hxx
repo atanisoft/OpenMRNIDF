@@ -1,5 +1,5 @@
 /** \copyright
- * Copyright (c) 2021, Mike Dunston
+ * Copyright (c) 2021, Balazs Racz
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,58 +24,31 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * \file Esp32SocInfo.hxx
+ * \file PacketProcessor.hxx
  *
- * Utility class which provides details of the running ESP32 SoC.
+ * Interface used for processing DCC packets to generate the feedback data.
  *
- * @author Mike Dunston
- * @date 4 May 2021
+ * @author Balazs Racz
+ * @date 10 July 2021
  */
-#ifndef _FREERTOS_DRIVERS_ESP32_ESP32SOCINFO_HXX_
-#define _FREERTOS_DRIVERS_ESP32_ESP32SOCINFO_HXX_
 
-#include <stdint.h>
+#include "dcc/packet.h"
 
-#if defined(ESP32)
+class RailcomDriver;
 
-#include "sdkconfig.h"
-
-#include <esp_idf_version.h>
-#if defined(CONFIG_IDF_TARGET_ESP32)
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
-#include <esp32/rom/rtc.h>
-#else
-#include <rom/rtc.h>
-#endif // IDF v4.3+
-#elif defined(CONFIG_IDF_TARGET_ESP32S2)
-#include <esp32s2/rom/rtc.h>
-#elif defined(CONFIG_IDF_TARGET_ESP32S3)
-#include <esp32s3/rom/rtc.h>
-#elif defined(CONFIG_IDF_TARGET_ESP32C3)
-#include <esp32c3/rom/rtc.h>
-#elif defined(CONFIG_IDF_TARGET_ESP32H2)
-#include <esp32h2/rom/rtc.h>
-#elif defined(CONFIG_IDF_TARGET_ESP8684)
-#include <esp8684/rom/rtc.h>
-#endif
-
-namespace openmrn_arduino
+namespace dcc
 {
 
-/// Utility class which logs information about the currently running SoC.
-class Esp32SocInfo
+/// Abstract class that is used as a plugin in the DCC decoder. The application
+/// logic can implement this class and it will be called from the
+/// interrupt. This is necessary to correctly generate the RailCom feedback to
+/// be sent back.
+class PacketProcessor
 {
 public:
-    /// Logs information about the currently running SoC.
-    ///
-    /// @return Reason for the reset of the SoC.
-    static uint8_t print_soc_info();
+    /// Called in an OS interrupt with the arrived packet.
+    virtual void packet_arrived(
+        const DCCPacket *pkt, RailcomDriver *railcom) = 0;
 };
 
-} // namespace openmrn_arduino
-
-using openmrn_arduino::Esp32SocInfo;
-
-#endif // ESP32
-
-#endif // _FREERTOS_DRIVERS_ESP32_ESP32SOCINFO_HXX_
+} // namespace dcc

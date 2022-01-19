@@ -349,6 +349,7 @@ Esp32WiFiManager::~Esp32WiFiManager()
     mdnsDeferredPublish_.clear();
 }
 
+#ifndef CONFIG_FREERTOS_UNICORE
 /// Entrypoint for Esp32WiFiManager Executor thread when running on an ESP32
 /// with more than one core.
 ///
@@ -359,6 +360,7 @@ static void thread_entry(void *param)
     static_cast<Executor<1> *>(param)->thread_body();
     vTaskDelete(nullptr);
 }
+#endif // !CONFIG_FREERTOS_UNICORE
 
 ConfigUpdateListener::UpdateAction Esp32WiFiManager::apply_configuration(
     int fd, bool initial_load, BarrierNotifiable *done)
@@ -1317,9 +1319,18 @@ StateFlowBase::Action Esp32WiFiManager::WiFiStackFlow::init_wifi()
     //
     // These do not require recompilation of arduino-esp32 code as these are
     // used in the WIFI_INIT_CONFIG_DEFAULT macro, they simply need to be redefined.
-    cfg.static_rx_buf_num = 16;
-    cfg.dynamic_rx_buf_num = 32;
-    cfg.rx_ba_win = 16;
+    if (cfg.static_rx_buf_num < 16)
+    {
+        cfg.static_rx_buf_num = 16;
+    }
+    if (cfg.dynamic_rx_buf_num < 32)
+    {
+        cfg.dynamic_rx_buf_num = 32;
+    }
+    if (cfg.rx_ba_win < 16)
+    {
+        cfg.rx_ba_win = 16;
+    }
 
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 

@@ -45,16 +45,12 @@
 #else
 #include "can_ioctl.h"
 #endif
-
+#include "freertos_drivers/common/SimpleLog.hxx"
 #include "dcc/packet.h"
 #include "utils/Crc.hxx"
 
 // If defined, collects samples of timing and state into a ring buffer.
 //#define DCC_DECODER_DEBUG
-
-#ifdef DCC_DECODER_DEBUG
-#include "freertos_drivers/common/SimpleLog.hxx"
-#endif
 
 namespace dcc
 {

@@ -53,7 +53,7 @@
 
 #include <assert.h>
 #include <driver/gpio.h>
-#if ESP_IDF_VERSION_MAJOR >= 5
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,0,0)
 #include <esp_private/periph_ctrl.h>
 #else // IDF v4.x (or earlier)
 #include <driver/periph_ctrl.h>

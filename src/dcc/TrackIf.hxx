@@ -1,5 +1,5 @@
 /** \copyright
- * Copyright (c) 2021, Mike Dunston
+ * Copyright (c) 2021, Balazs Racz
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,58 +24,24 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * \file Esp32SocInfo.hxx
+ * \file TrackIf.hxx
+ * Helper definitions for classes using track interface directly.
  *
- * Utility class which provides details of the running ESP32 SoC.
- *
- * @author Mike Dunston
- * @date 4 May 2021
+ * @author Balazs Racz
+ * @date 12 Aug 2021
  */
-#ifndef _FREERTOS_DRIVERS_ESP32_ESP32SOCINFO_HXX_
-#define _FREERTOS_DRIVERS_ESP32_ESP32SOCINFO_HXX_
 
-#include <stdint.h>
+#ifndef _DCC_TRACKIF_HXX_
+#define _DCC_TRACKIF_HXX_
 
-#if defined(ESP32)
+#include "dcc/Packet.hxx"
+#include "executor/StateFlow.hxx"
 
-#include "sdkconfig.h"
-
-#include <esp_idf_version.h>
-#if defined(CONFIG_IDF_TARGET_ESP32)
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
-#include <esp32/rom/rtc.h>
-#else
-#include <rom/rtc.h>
-#endif // IDF v4.3+
-#elif defined(CONFIG_IDF_TARGET_ESP32S2)
-#include <esp32s2/rom/rtc.h>
-#elif defined(CONFIG_IDF_TARGET_ESP32S3)
-#include <esp32s3/rom/rtc.h>
-#elif defined(CONFIG_IDF_TARGET_ESP32C3)
-#include <esp32c3/rom/rtc.h>
-#elif defined(CONFIG_IDF_TARGET_ESP32H2)
-#include <esp32h2/rom/rtc.h>
-#elif defined(CONFIG_IDF_TARGET_ESP8684)
-#include <esp8684/rom/rtc.h>
-#endif
-
-namespace openmrn_arduino
+namespace dcc
 {
 
-/// Utility class which logs information about the currently running SoC.
-class Esp32SocInfo
-{
-public:
-    /// Logs information about the currently running SoC.
-    ///
-    /// @return Reason for the reset of the SoC.
-    static uint8_t print_soc_info();
-};
+using TrackIf = FlowInterface<Buffer<dcc::Packet>>;
 
-} // namespace openmrn_arduino
+} // namespace dcc
 
-using openmrn_arduino::Esp32SocInfo;
-
-#endif // ESP32
-
-#endif // _FREERTOS_DRIVERS_ESP32_ESP32SOCINFO_HXX_
+#endif // _DCC_TRACKIF_HXX_

@@ -1,10 +1,10 @@
 /** \copyright
- * Copyright (c) 2013, Balazs Racz
+ * Copyright (c) 2021, Balazs Racz
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are  permitted provided that the following conditions are met:
- *
+ * 
  *  - Redistributions of source code must retain the above copyright notice,
  *    this list of conditions and the following disclaimer.
  *
@@ -24,50 +24,30 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * \file EventHandlerMock.hxx
- *
- * Helper utilities for testing event handlers.
- *
- * This file must only ever be included in unittests.
+ * \file sleep.h
+ * 
+ * Declares cross-platform sleep functions.
  *
  * @author Balazs Racz
- * @date 7 December 2013
+ * @date 10 Sep 2021
  */
 
-#ifndef _OPENLCB_EVENTHANDLERMOCK_HXX_
-#define _OPENLCB_EVENTHANDLERMOCK_HXX_
+#ifndef _OS_SLEEP_H_
+#define _OS_SLEEP_H_
 
-#include "gmock/gmock.h"
-#include "openlcb/EventHandler.hxx"
+#include <inttypes.h>
 
-namespace openlcb {
+#ifndef EMSCRIPTEN
+/// Sleep a given number of microseconds. The granularity of sleep depends on
+/// the operating system, for FreeRTOS sleeping less than 1 msec is not
+/// possible with this function.
+/// @param microseconds how long to sleep.
+static void microsleep(uint32_t microseconds) __attribute__((weakref("usleep")));
+#endif
 
-/// Test handler for receiving incoming event related messages via the
-/// EventService. Incoming messages need GoogleMock expectations.
-class MockEventHandler : public EventHandler
-{
-public:
-/// Proxies an event handler function to a gmock function.
-///
-/// @param FN name of the function to proxy.
-#define DEFPROXYFN(FN)                                                         \
-    MOCK_METHOD3(FN, void(const EventRegistryEntry &, EventReport *event,      \
-                          BarrierNotifiable *done))
+/// Executes a busy loop for a given amount of time. It is recommended to use
+/// this only for small number of microseconds (e.g. <100 usec).
+/// @param microseconds how long to delay.
+extern void microdelay(uint32_t microseconds);
 
-    DEFPROXYFN(handle_event_report);
-    DEFPROXYFN(handle_consumer_identified);
-    DEFPROXYFN(handle_consumer_range_identified);
-    DEFPROXYFN(handle_producer_identified);
-    DEFPROXYFN(handle_producer_range_identified);
-    DEFPROXYFN(handle_identify_global);
-    DEFPROXYFN(handle_identify_consumer);
-    DEFPROXYFN(handle_identify_producer);
-
-#undef DEFPROXYFN
-};
-
-}  // namespace openlcb
-
-#endif // _OPENLCB_EVENTHANDLERMOCK_HXX_
-
-
+#endif // _OS_SLEEP_H_
