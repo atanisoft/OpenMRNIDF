@@ -733,6 +733,10 @@ public:
         {                                                                      \
             return PIN;                                                        \
         }                                                                      \
+        static const adc_channel_t channel()                                   \
+        {                                                                      \
+            return CHANNEL;                                                    \
+        }                                                                      \
     };                                                                         \
     typedef Esp32ADCInput<NAME##Defs> NAME##_Pin
 
