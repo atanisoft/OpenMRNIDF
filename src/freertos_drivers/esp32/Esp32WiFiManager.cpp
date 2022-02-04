@@ -304,10 +304,10 @@ Esp32WiFiManager::Esp32WiFiManager(const char *station_ssid
     // https://github.com/espressif/esp-idf/blob/master/components/tcpip_adapter/include/tcpip_adapter.h#L611
     if (hostname_.length() > MAX_HOSTNAME_LENGTH)
     {
-        LOG(WARNING, "ESP32 hostname is too long, original hostname: %s",
+        LOG(WARNING, "ESP32 hostname is too long, original hostname:%s",
             hostname_.c_str());
         hostname_.resize(MAX_HOSTNAME_LENGTH);
-        LOG(WARNING, "truncated hostname: %s", hostname_.c_str());
+        LOG(WARNING, "truncated hostname:%s", hostname_.c_str());
     }
 
     // Release any extra capacity allocated for the hostname.
@@ -323,13 +323,11 @@ Esp32WiFiManager::Esp32WiFiManager(const char *station_ssid
     };
 
     LOG(INFO, "[WiFi] Configuration Settings:");
-    LOG(INFO, "[WiFi] Mode: %s (%d)", wifiModes[wifiMode_], wifiMode_);
-    LOG(INFO, "[WiFi] Station SSID: '%s', Password: '%s'", ssid_.c_str(),
-        password_.c_str());
-    LOG(INFO, "[WiFi] SoftAP SSID: '%s', Password: '%s'", softAPName_.c_str(),
-        softAPPassword_.c_str());
-    LOG(INFO, "[WiFi] Hostname: %s", hostname_.c_str());
-    LOG(INFO, "[WiFi] SNTP Enabled: %s, Server: %s, TimeZone: %s",
+    LOG(INFO, "[WiFi] Mode:%s (%d)", wifiModes[wifiMode_], wifiMode_);
+    LOG(INFO, "[WiFi] Station SSID:'%s'", ssid_.c_str());
+    LOG(INFO, "[WiFi] SoftAP SSID:'%s'", softAPName_.c_str());
+    LOG(INFO, "[WiFi] Hostname:%s", hostname_.c_str());
+    LOG(INFO, "[WiFi] SNTP Enabled:%s, Server:%s, TimeZone:%s",
         sntpEnabled_ ? "true" : "false", sntpServer_.c_str(),
         timeZone_.c_str());
 }
@@ -403,7 +401,7 @@ ConfigUpdateListener::UpdateAction Esp32WiFiManager::apply_configuration(
 
     // Calculate CRC32 from the loaded buffer.
     uint32_t configCrc32 = crc32_le(0, crcbuf.get(), cfg_.size());
-    LOG(VERBOSE, "existing config CRC32: %d, new CRC32: %d", configCrc32_,
+    LOG(VERBOSE, "existing config CRC32:%d, new CRC32:%d", configCrc32_,
         configCrc32);
 
     if (initial_load)
@@ -781,7 +779,7 @@ void Esp32WiFiManager::mdns_publish(string service, const uint16_t port)
         split_mdns_service_name(&service_name, &protocol_name);
         esp_err_t res = mdns_service_add(
             NULL, service_name.c_str(), protocol_name.c_str(), port, NULL, 0);
-        LOG(INFO, "[mDNS] mdns_service_add(%s.%s:%d): %s."
+        LOG(VERBOSE, "[mDNS] mdns_service_add(%s.%s:%d):%s."
           , service_name.c_str(), protocol_name.c_str(), port
           , esp_err_to_name(res));
         // ESP_FAIL will be triggered if there is a timeout during publish of
@@ -812,7 +810,7 @@ void Esp32WiFiManager::mdns_publish(string service, const uint16_t port)
         }
         else
         {
-            LOG_ERROR("[mDNS] Failed to publish: %s.%s:%d",
+            LOG_ERROR("[mDNS] Failed to publish:%s.%s:%d",
                       service_name.c_str(), protocol_name.c_str(), port);
             Singleton<Esp32WiFiManager>::instance()->mdns_publish(
                 service, port);
@@ -839,7 +837,7 @@ void Esp32WiFiManager::mdns_unpublish(string service)
       , service_name.c_str(), protocol_name.c_str());
     esp_err_t res =
         mdns_service_remove(service_name.c_str(), protocol_name.c_str());
-    LOG(INFO, "[mDNS] mdns_service_remove: %s.", esp_err_to_name(res));
+    LOG(VERBOSE, "[mDNS] mdns_service_remove:%s.", esp_err_to_name(res));
     // TODO: should we queue up unpublish requests for future retries?
 }
 
@@ -863,7 +861,7 @@ void Esp32WiFiManager::start_mdns_system()
 
         // Set the mDNS hostname based on our generated hostname so it can be
         // found by other nodes.
-        LOG(INFO, "[mDNS] Setting mDNS hostname to \"%s\"", hostname_.c_str());
+        LOG(INFO, "[mDNS] Setting hostname to \"%s\"", hostname_.c_str());
         ESP_ERROR_CHECK(mdns_hostname_set(hostname_.c_str()));
 
         // Set the default mDNS instance name to the generated hostname.
@@ -886,8 +884,7 @@ void Esp32WiFiManager::on_station_started()
     // Set the generated hostname prior to connecting to the SSID
     // so that it shows up with the generated hostname instead of
     // the default "Espressif".
-    LOG(INFO, "[WiFi] Setting ESP32 hostname to \"%s\".",
-        hostname_.c_str());
+    LOG(INFO, "[Station] Setting hostname to \"%s\".", hostname_.c_str());
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
     esp_netif_set_hostname(espNetIfaces_[STATION_INTERFACE], hostname_.c_str());
 #else
@@ -896,19 +893,18 @@ void Esp32WiFiManager::on_station_started()
 #endif
     uint8_t mac[6];
     esp_wifi_get_mac(WIFI_IF_STA, mac);
-    LOG(INFO, "[WiFi] MAC Address: %s", mac_to_string(mac).c_str());
+    LOG(INFO, "[Station] MAC Address:%s", mac_to_string(mac).c_str());
 
     // Start the DHCP service before connecting so it hooks into
     // the flow early and provisions the IP automatically.
-    LOG(INFO, "[DHCP] Starting DHCP Client.");
+    LOG(INFO, "[Station] Starting DHCP Client.");
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
     ESP_ERROR_CHECK(esp_netif_dhcpc_start(espNetIfaces_[STATION_INTERFACE]));
 #else
     ESP_ERROR_CHECK(tcpip_adapter_dhcpc_start(TCPIP_ADAPTER_IF_STA));
 #endif // IDF v4.1+
 
-    LOG(INFO, "[WiFi] Station started, attempting to connect to SSID: %s.",
-        ssid_.c_str());
+    LOG(INFO, "[Station] Connecting to SSID:%s.", ssid_.c_str());
     // Start the SSID connection process.
     esp_wifi_connect();
 
@@ -927,7 +923,7 @@ void Esp32WiFiManager::on_station_started()
 
 void Esp32WiFiManager::on_station_connected()
 {
-    LOG(INFO, "[WiFi] Connected to SSID: %s", ssid_.c_str());
+    LOG(INFO, "[Station] Connected to SSID:%s", ssid_.c_str());
     // Set the flag that indictes we are connected to the SSID.
     xEventGroupSetBits(wifiStatusEventGroup_, WIFI_CONNECTED_BIT);
 }
@@ -952,7 +948,7 @@ void Esp32WiFiManager::on_station_disconnected(uint8_t reason)
         // and will wakeup on it's own.
         was_previously_connected = event_bits & WIFI_GOTIP_BIT;
 
-        LOG(INFO, "[WiFi] Lost connection to SSID: %s (reason:%d)",
+        LOG(INFO, "[Station] Lost connection to SSID:%s (reason:%d)",
             ssid_.c_str(), reason);
         // Clear the flag that indicates we are connected to the SSID.
         xEventGroupClearBits(wifiStatusEventGroup_, WIFI_CONNECTED_BIT);
@@ -964,14 +960,14 @@ void Esp32WiFiManager::on_station_disconnected(uint8_t reason)
     // trigger the reconnection process at this point.
     if (was_previously_connected)
     {
-        LOG(INFO, "[WiFi] Attempting to reconnect to SSID: %s.",
+        LOG(INFO, "[Station] Reconnecting to SSID:%s.",
             ssid_.c_str());
         wifiStackFlow_.notify();
     }
     else
     {
         LOG(INFO,
-            "[WiFi] Connection failed, reconnecting to SSID: %s (reason:%d).",
+            "[Station] Connection to SSID:%s (reason:%d) failed, retrying.",
             ssid_.c_str(), reason);
     }
     esp_wifi_connect();
@@ -991,7 +987,7 @@ void Esp32WiFiManager::on_station_disconnected(uint8_t reason)
 
 void Esp32WiFiManager::on_station_ip_assigned(uint32_t ip_address)
 {
-    LOG(INFO, "[WiFi] IP address: %s", ipv4_to_string(ip_address).c_str());
+    LOG(INFO, "[Station] IP address:%s", ipv4_to_string(ip_address).c_str());
 
     // Start the mDNS system since we have an IP address, the mDNS system
     // on the ESP32 requires that the IP address be assigned otherwise it
@@ -1051,14 +1047,13 @@ void Esp32WiFiManager::on_softap_start()
     uint32_t ip_address = 0;
     uint8_t mac[6];
     esp_wifi_get_mac(WIFI_IF_AP, mac);
-    LOG(INFO, "[SoftAP] MAC Address: %s", mac_to_string(mac).c_str());
+    LOG(INFO, "[SoftAP] MAC Address:%s", mac_to_string(mac).c_str());
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,1,0)
     // Set the generated hostname prior to connecting to the SSID
     // so that it shows up with the generated hostname instead of
     // the default "Espressif".
-    LOG(INFO, "[SoftAP] Setting ESP32 hostname to \"%s\".",
-        hostname_.c_str());
+    LOG(INFO, "[SoftAP] Setting hostname to \"%s\".", hostname_.c_str());
     ESP_ERROR_CHECK(esp_netif_set_hostname(
         espNetIfaces_[SOFTAP_INTERFACE], hostname_.c_str()));
 
@@ -1072,8 +1067,7 @@ void Esp32WiFiManager::on_softap_start()
     // Set the generated hostname prior to connecting to the SSID
     // so that it shows up with the generated hostname instead of
     // the default "Espressif".
-    LOG(INFO, "[SoftAP] Setting ESP32 hostname to \"%s\".",
-        hostname_.c_str());
+    LOG(INFO, "[SoftAP] Setting hostname to \"%s\".", hostname_.c_str());
     ESP_ERROR_CHECK(tcpip_adapter_set_hostname(
         TCPIP_ADAPTER_IF_AP, hostname_.c_str()));
 
@@ -1085,7 +1079,7 @@ void Esp32WiFiManager::on_softap_start()
     ip_address = ntohl(ip4_addr_get_u32(&ip_info.ip));
 #endif // IDF v4.1+
 
-    LOG(INFO, "[SoftAP] IP address: %s", ipv4_to_string(ip_address).c_str());
+    LOG(INFO, "[SoftAP] IP address:%s", ipv4_to_string(ip_address).c_str());
 
     // If we are operating only in SoftAP mode we can start any background
     // services that would also be started when the station interface is ready
@@ -1164,7 +1158,7 @@ void Esp32WiFiManager::on_wifi_scan_completed(uint32_t status, uint8_t count)
 #if LOGLEVEL >= VERBOSE
         for (int i = 0; i < num_found; i++)
         {
-            LOG(VERBOSE, "SSID: %s, RSSI: %d, channel: %d"
+            LOG(VERBOSE, "SSID:%s, RSSI:%d, channel:%d"
                 , ssidScanResults_[i].ssid
                 , ssidScanResults_[i].rssi, ssidScanResults_[i].primary);
         }
@@ -1193,7 +1187,7 @@ void Esp32WiFiManager::sync_time(time_t now)
 static void sntp_update_received(struct timeval *tv)
 {
     time_t new_time = tv->tv_sec;
-    LOG(INFO, "[SNTP] Received time update, new localtime: %s"
+    LOG(INFO, "[SNTP] Received time update, new localtime:%s"
       , ctime(&new_time));
     Singleton<Esp32WiFiManager>::instance()->sync_time(new_time);
 }
@@ -1287,7 +1281,7 @@ StateFlowBase::Action Esp32WiFiManager::WiFiStackFlow::init_interface()
     // exists.
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE)
     {
-        LOG(FATAL, "[WiFi] Failed to initialize the default event loop: %s",
+        LOG(FATAL, "[WiFi] Failed to initialize the default event loop:%s",
             esp_err_to_name(err));
     }
 
@@ -1396,7 +1390,7 @@ StateFlowBase::Action Esp32WiFiManager::WiFiStackFlow::configure_station()
                parent_->password_.c_str());
     }
 
-    LOG(INFO, "[WiFi] Configuring Station (SSID: %s)", conf.sta.ssid);
+    LOG(INFO, "[WiFi] Configuring Station (SSID:%s)", conf.sta.ssid);
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &conf));
 #else
@@ -1455,7 +1449,7 @@ StateFlowBase::Action Esp32WiFiManager::WiFiStackFlow::configure_softap()
         }
     }
 
-    LOG(INFO, "[WiFi] Configuring SoftAP (SSID: %s)", conf.ap.ssid);
+    LOG(INFO, "[WiFi] Configuring SoftAP (SSID:%s)", conf.ap.ssid);
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &conf));
 #else
@@ -1478,6 +1472,9 @@ StateFlowBase::Action Esp32WiFiManager::WiFiStackFlow::start_wifi()
     // SSID based on the configuration set above.
     LOG(INFO, "[WiFi] Starting WiFi stack");
     ESP_ERROR_CHECK(esp_wifi_start());
+
+    // force WiFi power to maximum during startup.
+    ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(84));
 
     if (parent_->wifiMode_ != WIFI_MODE_AP && parent_->waitForStationConnect_)
     {
@@ -1532,7 +1529,7 @@ StateFlowBase::Action Esp32WiFiManager::WiFiStackFlow::wait_for_connect()
     // Check if we successfully connected or not. If not, force a reboot.
     if ((bits & WIFI_CONNECTED_BIT) != WIFI_CONNECTED_BIT)
     {
-        LOG(FATAL, "[WiFi] Failed to connect to SSID: %s.",
+        LOG(FATAL, "[WiFi] Failed to connect to SSID:%s.",
             parent_->ssid_.c_str());
     }
 
@@ -1683,7 +1680,7 @@ int mdns_lookup(
     {
         // failed to find any matches
         LOG(ESP32_WIFIMGR_MDNS_LOOKUP_LOG_LEVEL,
-            "[mDNS] No matches found for service: %s.",
+            "[mDNS] No matches found for service:%s.",
             service);
         return EAI_AGAIN;
     }
@@ -1702,7 +1699,7 @@ int mdns_lookup(
             if (ipaddr->addr.type == IPADDR_TYPE_V4)
             {
                 LOG(ESP32_WIFIMGR_MDNS_LOOKUP_LOG_LEVEL,
-                    "[mDNS] Found %s as providing service: %s on port %d.",
+                    "[mDNS] Found %s as providing service:%s on port %d.",
                     res->hostname, service, res->port);
                 inet_addr_from_ip4addr(
                     &sa_in->sin_addr, &ipaddr->addr.u_addr.ip4);
@@ -1720,8 +1717,7 @@ int mdns_lookup(
     if (!match_found)
     {
         LOG(ESP32_WIFIMGR_MDNS_LOOKUP_LOG_LEVEL,
-            "[mDNS] No matches found for service: %s.",
-            service);
+            "[mDNS] No matches found for service:%s.", service);
         return EAI_AGAIN;
     }
 
