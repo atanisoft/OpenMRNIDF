@@ -188,6 +188,9 @@ public:
     /// Destructor.
     ~Esp32WiFiManager();
 
+    /// Display the configuration settings in use.
+    void display_configuration();
+
     /// Configures a @ref Gpio to be used as a visual indication of the current
     /// WiFi status.
     ///

@@ -312,24 +312,6 @@ Esp32WiFiManager::Esp32WiFiManager(const char *station_ssid
 
     // Release any extra capacity allocated for the hostname.
     hostname_.shrink_to_fit();
-
-    static const char * const wifiModes[] =
-    {
-        "Off",
-        "Station Only",
-        "SoftAP Only",
-        "Station and SoftAP",
-        "Unknown"
-    };
-
-    LOG(INFO, "[WiFi] Configuration Settings:");
-    LOG(INFO, "[WiFi] Mode:%s (%d)", wifiModes[wifiMode_], wifiMode_);
-    LOG(INFO, "[WiFi] Station SSID:'%s'", ssid_.c_str());
-    LOG(INFO, "[WiFi] SoftAP SSID:'%s'", softAPName_.c_str());
-    LOG(INFO, "[WiFi] Hostname:%s", hostname_.c_str());
-    LOG(INFO, "[WiFi] SNTP Enabled:%s, Server:%s, TimeZone:%s",
-        sntpEnabled_ ? "true" : "false", sntpServer_.c_str(),
-        timeZone_.c_str());
 }
 
 Esp32WiFiManager::~Esp32WiFiManager()
@@ -355,6 +337,27 @@ Esp32WiFiManager::~Esp32WiFiManager()
     // cleanup internal vectors/maps
     ssidScanResults_.clear();
     mdnsDeferredPublish_.clear();
+}
+
+void Esp32WiFiManager::display_configuration()
+{
+    static const char * const wifiModes[] =
+    {
+        "Off",
+        "Station Only",
+        "SoftAP Only",
+        "Station and SoftAP",
+        "Unknown"
+    };
+
+    LOG(INFO, "[WiFi] Configuration Settings:");
+    LOG(INFO, "[WiFi] Mode:%s (%d)", wifiModes[wifiMode_], wifiMode_);
+    LOG(INFO, "[WiFi] Station SSID:'%s'", ssid_.c_str());
+    LOG(INFO, "[WiFi] SoftAP SSID:'%s'", softAPName_.c_str());
+    LOG(INFO, "[WiFi] Hostname:%s", hostname_.c_str());
+    LOG(INFO, "[WiFi] SNTP Enabled:%s, Server:%s, TimeZone:%s",
+        sntpEnabled_ ? "true" : "false", sntpServer_.c_str(),
+        timeZone_.c_str());
 }
 
 #ifndef CONFIG_FREERTOS_UNICORE
