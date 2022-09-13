@@ -79,6 +79,7 @@ set_source_files_properties(src/openlcb/NonAuthoritativeEventProducer.cpp PROPER
 set_source_files_properties(src/openlcb/PIPClient.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/openlcb/RoutingLogic.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/openlcb/SimpleNodeInfo.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
+set_source_files_properties(src/openlcb/SimpleNodeInfoResponse.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/openlcb/SimpleNodeInfoMockUserFile.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
 set_source_files_properties(src/openlcb/SimpleStack.cpp PROPERTIES COMPILE_FLAGS "-Wno-ignored-qualifiers -Wno-implicit-fallthrough")
 set_source_files_properties(src/openlcb/TractionCvSpace.cpp PROPERTIES COMPILE_FLAGS -Wno-ignored-qualifiers)
