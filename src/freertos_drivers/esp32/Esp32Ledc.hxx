@@ -132,7 +132,8 @@ public:
     void hw_init()
     {
         LOG(INFO,
-            "[Esp32Ledc:%d] Configuring timer (resolution:%d, frequency:%d)",
+            "[Esp32Ledc:%d] Configuring timer (resolution:%d, frequency:%"
+            PRIu32 ")",
             timerConfig_.timer_num,
             (1 << (uint8_t)timerConfig_.duty_resolution) - 1,
             timerConfig_.freq_hz);

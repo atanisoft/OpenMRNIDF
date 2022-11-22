@@ -52,6 +52,8 @@
 
 #include <driver/twai.h>
 
+#include <esp_app_format.h>
+
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,4,0)
 #include <esp_chip_info.h>
 #endif // IDF v4.4+
@@ -68,6 +70,8 @@
 #else
 #error Unknown/Unsupported ESP32 variant.
 #endif
+#include <stdint.h>
+
 #include "openlcb/Bootloader.hxx"
 #include "utils/constants.hxx"
 #include "utils/Hub.hxx"
@@ -229,7 +233,7 @@ bool try_send_can_frame(const struct can_frame &frame)
 void get_flash_boundaries(const void **flash_min, const void **flash_max,
     const struct app_header **app_header)
 {
-    LOG(VERBOSE, "[Bootloader] get_flash_boundaries(%d,%d)", 0,
+    LOG(VERBOSE, "[Bootloader] get_flash_boundaries(%d,%" PRIu32 ")", 0,
         esp_bl_state.app_header.app_size);
     *((uint32_t *)flash_min) = 0;
     *((uint32_t *)flash_max) = esp_bl_state.app_header.app_size;
@@ -248,8 +252,8 @@ void get_flash_page_info(
     value &= ~(CONFIG_WL_SECTOR_SIZE - 1);
     *page_start = (const void *)value;
     *page_length_bytes = CONFIG_WL_SECTOR_SIZE;
-    LOG(VERBOSE, "[Bootloader] get_flash_page_info(%d, %d)", value,
-        *page_length_bytes);
+    LOG(VERBOSE, "[Bootloader] get_flash_page_info(%" PRIu32 ", %" PRIu32 ")",
+        value, *page_length_bytes);
 }
 
 /// Callback from the bootloader to erase a flash page.
@@ -261,7 +265,7 @@ void get_flash_page_info(
 void erase_flash_page(const void *address)
 {
     // NO OP as this is handled automatically as part of esp_ota_write.
-    LOG(VERBOSE, "[Bootloader] Erase: %d", (uint32_t)address);
+    LOG(VERBOSE, "[Bootloader] Erase: %" PRIu32, (uint32_t)address);
 }
 
 /// Callback from the bootloader to write to flash.
@@ -279,7 +283,8 @@ void erase_flash_page(const void *address)
 void write_flash(const void *address, const void *data, uint32_t size_bytes)
 {
     uint32_t addr = (uint32_t)address;
-    LOG(VERBOSE, "[Bootloader] Write: %d, %d", addr, size_bytes);
+    LOG(VERBOSE, "[Bootloader] Write: %" PRIu32 ", %" PRIu32, addr,
+        size_bytes);
 
     // The first part of the received binary should have the image header,
     // segment header and app description. These are used as a first pass
@@ -419,7 +424,7 @@ uint16_t flash_complete(void)
 /// value to zero.
 void checksum_data(const void* data, uint32_t size, uint32_t* checksum)
 {
-    LOG(VERBOSE, "[Bootloader] checksum_data(%d)", size);
+    LOG(VERBOSE, "[Bootloader] checksum_data(%" PRIu32 ")", size);
     // Force the checksum to be zero since it is not currently used on the
     // ESP32. The startup of the node may validate the built-in SHA256 and
     // fallback to previous application binary if the SHA256 validation fails.
@@ -514,7 +519,8 @@ void esp32_bootloader_run(uint64_t id, gpio_num_t rx, gpio_num_t tx,
             esp_bl_state.chip_id = ESP_CHIP_ID_ESP32C3;
             break;
         default:
-            LOG(FATAL, "[Bootloader] Unknown/Unsupported Chip ID: %x", chip_info.model);
+            LOG(FATAL, "[Bootloader] Unknown/Unsupported Chip ID: %x",
+                chip_info.model);
     }
 
     // Initialize the app header details based on the currently running

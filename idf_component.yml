@@ -1,0 +1,10 @@
+targets:
+  - esp32
+  - esp32s2
+  - esp32s3
+  - esp32c3
+
+dependencies:
+  idf: ">=5.0"
+  espressif/mdns: "*"
+    if: "idf_version >=5.0"

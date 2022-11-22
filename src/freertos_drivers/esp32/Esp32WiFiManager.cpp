@@ -73,6 +73,7 @@
 #include <esp_wifi_internal.h>
 #include <rom/crc.h>
 #endif // ESP_IDF_VERSION
+#include <stdint.h>
 
 using openlcb::NodeID;
 using openlcb::SimpleCanStackBase;
@@ -403,8 +404,8 @@ ConfigUpdateListener::UpdateAction Esp32WiFiManager::apply_configuration(
 
     // Calculate CRC32 from the loaded buffer.
     uint32_t configCrc32 = crc32_le(0, crcbuf.get(), cfg_.size());
-    LOG(VERBOSE, "existing config CRC32:%d, new CRC32:%d", configCrc32_,
-        configCrc32);
+    LOG(VERBOSE, "existing config CRC32:%" PRIu32 ", new CRC32:%" PRIu32,
+        configCrc32_, configCrc32);
 
     if (initial_load)
     {
@@ -482,8 +483,8 @@ void Esp32WiFiManager::factory_reset(int fd)
 void Esp32WiFiManager::process_idf_event(void *arg, esp_event_base_t event_base
                                        , int32_t event_id, void *event_data)
 {
-    LOG(VERBOSE, "Esp32WiFiManager::process_idf_event(%s, %d, %p)", event_base
-      , event_id, event_data);
+    LOG(VERBOSE, "Esp32WiFiManager::process_idf_event(%s, %" PRIi32 ", %p)",
+        event_base, event_id, event_data);
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
     {
         Singleton<Esp32WiFiManager>::instance()->on_station_started();
@@ -542,7 +543,8 @@ void Esp32WiFiManager::process_idf_event(void *arg, esp_event_base_t event_base
 // Processes a WiFi system event
 esp_err_t Esp32WiFiManager::process_wifi_event(void *ctx, system_event_t *event)
 {
-    LOG(VERBOSE, "Esp32WiFiManager::process_wifi_event(%d)", event->event_id);
+    LOG(VERBOSE, "Esp32WiFiManager::process_wifi_event(%" PRIi32 ")",
+        event->event_id);
 
     if (event->event_id == SYSTEM_EVENT_STA_START)
     {
@@ -642,7 +644,7 @@ void Esp32WiFiManager::start_hub()
     hubServiceName_ = cfg_.hub().service_name().read(configFd_);
     uint16_t hub_port = CDI_READ_TRIMMED(cfg_.hub().port, configFd_);
 
-    LOG(INFO, "[HUB] Starting TCP/IP listener on port %d", hub_port);
+    LOG(INFO, "[HUB] Starting TCP/IP listener on port %" PRIu16, hub_port);
     auto stack = static_cast<openlcb::SimpleCanStackBase *>(stack_);
     stack->start_tcp_hub_server(hub_port);
     auto hub = stack->get_tcp_hub_server();
@@ -781,9 +783,9 @@ void Esp32WiFiManager::mdns_publish(string service, const uint16_t port)
         split_mdns_service_name(&service_name, &protocol_name);
         esp_err_t res = mdns_service_add(
             NULL, service_name.c_str(), protocol_name.c_str(), port, NULL, 0);
-        LOG(VERBOSE, "[mDNS] mdns_service_add(%s.%s:%d):%s."
-          , service_name.c_str(), protocol_name.c_str(), port
-          , esp_err_to_name(res));
+        LOG(VERBOSE, "[mDNS] mdns_service_add(%s.%s:%" PRIu16 "):%s.",
+            service_name.c_str(), protocol_name.c_str(), port,
+            esp_err_to_name(res));
         // ESP_FAIL will be triggered if there is a timeout during publish of
         // the new mDNS entry. The mDNS task runs at a very low priority on the
         // PRO_CPU which is also where the OpenMRN Executor runs from which can
@@ -807,12 +809,12 @@ void Esp32WiFiManager::mdns_publish(string service, const uint16_t port)
         }
         else if (res == ESP_OK)
         {
-            LOG(INFO, "[mDNS] Advertising %s.%s:%d.", service_name.c_str(),
-                protocol_name.c_str(), port);
+            LOG(INFO, "[mDNS] Advertising %s.%s:%" PRIu16 ".",
+                service_name.c_str(), protocol_name.c_str(), port);
         }
         else
         {
-            LOG_ERROR("[mDNS] Failed to publish:%s.%s:%d",
+            LOG_ERROR("[mDNS] Failed to publish:%s.%s:%" PRIu16,
                       service_name.c_str(), protocol_name.c_str(), port);
             Singleton<Esp32WiFiManager>::instance()->mdns_publish(
                 service, port);
@@ -1154,7 +1156,7 @@ void Esp32WiFiManager::on_wifi_scan_completed(uint32_t status, uint8_t count)
     {
         uint16_t num_found = count;
         esp_wifi_scan_get_ap_num(&num_found);
-        LOG(VERBOSE, "[WiFi] %d SSIDs found via scan", num_found);
+        LOG(VERBOSE, "[WiFi] %" PRIu16 " SSIDs found via scan", num_found);
         ssidScanResults_.resize(num_found);
         esp_wifi_scan_get_ap_records(&num_found, ssidScanResults_.data());
 #if LOGLEVEL >= VERBOSE
@@ -1701,7 +1703,7 @@ int mdns_lookup(
             if (ipaddr->addr.type == IPADDR_TYPE_V4)
             {
                 LOG(ESP32_WIFIMGR_MDNS_LOOKUP_LOG_LEVEL,
-                    "[mDNS] Found %s as providing service:%s on port %d.",
+                    "[mDNS] Found %s providing service:%s on port %" PRIu16,
                     res->hostname, service, res->port);
                 inet_addr_from_ip4addr(
                     &sa_in->sin_addr, &ipaddr->addr.u_addr.ip4);

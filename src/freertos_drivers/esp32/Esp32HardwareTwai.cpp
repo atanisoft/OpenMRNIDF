@@ -68,6 +68,7 @@
 #include <hal/twai_types.h>
 #include <hal/twai_hal.h>
 #include <soc/gpio_sig_map.h>
+#include <stdint.h>
 
 #include "can_frame.h"
 #include "can_ioctl.h"
@@ -234,7 +235,7 @@ static inline void twai_purge_rx_queue()
     Notifiable* n = nullptr;
     {
         AtomicHolder h(&twai.buf_lock);
-        LOG(VERBOSE, "ESP-TWAI: puring RX-Q: %d", twai.rx_buf->pending());
+        LOG(VERBOSE, "ESP-TWAI: puring RX-Q:%zu", twai.rx_buf->pending());
         twai.stats.rx_missed += twai.rx_buf->pending();
         twai.rx_buf->flush();
         std::swap(n, twai.readable_notify);
@@ -260,7 +261,7 @@ static inline void twai_purge_tx_queue()
     Notifiable* n = nullptr;
     {
         AtomicHolder h(&twai.buf_lock);
-        LOG(VERBOSE, "ESP-TWAI: puring TX-Q: %d", twai.tx_buf->pending());
+        LOG(VERBOSE, "ESP-TWAI: puring TX-Q:%zu", twai.tx_buf->pending());
         twai.stats.tx_failed += twai.tx_buf->pending();
         twai.tx_buf->flush();
         std::swap(n, twai.writable_notify);
@@ -288,7 +289,7 @@ static inline void twai_purge_tx_queue()
 /// blocking operation.
 static ssize_t twai_vfs_write(int fd, const void *buf, size_t size)
 {
-    LOG(VERBOSE, "ESP-TWAI: write(%d, %p, %d)", fd, buf, size);
+    LOG(VERBOSE, "ESP-TWAI: write(%d, %p, %zu)", fd, buf, size);
     DASSERT(fd == TWAI_VFS_FD);
     ssize_t sent = 0;
     const struct can_frame *data = (const struct can_frame *)buf;
@@ -307,7 +308,7 @@ static ssize_t twai_vfs_write(int fd, const void *buf, size_t size)
         else if (!is_twai_running())
         {
             LOG_ERROR("ESP-TWAI: TWAI driver is not running, unable to write "
-                      "%d frames.", size);
+                      "%zu frames.", size);
             bus_error = true;
             break;
         }
@@ -360,7 +361,7 @@ static ssize_t twai_vfs_write(int fd, const void *buf, size_t size)
     {
         errno = EWOULDBLOCK;
     }
-    LOG(VERBOSE, "ESP-TWAI: write() %d", sent * sizeof(struct can_frame));
+    LOG(VERBOSE, "ESP-TWAI: write() %zu", sent * sizeof(struct can_frame));
     return sent * sizeof(struct can_frame);
 }
 
@@ -373,7 +374,7 @@ static ssize_t twai_vfs_write(int fd, const void *buf, size_t size)
 /// blocking operation.
 static ssize_t twai_vfs_read(int fd, void *buf, size_t size)
 {
-    LOG(VERBOSE, "ESP-TWAI: read(%d, %p, %d)", fd, buf, size);
+    LOG(VERBOSE, "ESP-TWAI: read(%d, %p, %zu)", fd, buf, size);
     DASSERT(fd == TWAI_VFS_FD);
 
     ssize_t received = 0;
@@ -401,7 +402,7 @@ static ssize_t twai_vfs_read(int fd, void *buf, size_t size)
         return -1;
     }
 
-    LOG(VERBOSE, "ESP-TWAI: read() %d", received * sizeof(struct can_frame));
+    LOG(VERBOSE, "ESP-TWAI: read() %zu", received * sizeof(struct can_frame));
     return received * sizeof(struct can_frame);
 }
 
@@ -609,7 +610,7 @@ static inline uint32_t twai_rx_frames()
     uint32_t rx_ready_count = twai_hal_get_rx_msg_count(&twai.context);
     struct can_frame *can_frame = nullptr;
     uint32_t rx_count = 0;
-    ESP_EARLY_LOGV(TWAI_LOG_TAG, "rx-ready-count: %d", rx_ready_count);
+    ESP_EARLY_LOGV(TWAI_LOG_TAG, "rx-ready-count: %" PRIu32, rx_ready_count);
     for (uint32_t idx = 0; idx < rx_ready_count; idx++)
     {
         twai_hal_frame_t frame;
@@ -619,7 +620,7 @@ static inline uint32_t twai_rx_frames()
             {
                 // DLC is longer than supported, discard the frame.
                 twai.stats.rx_discard++;
-                ESP_EARLY_LOGE(TWAI_LOG_TAG, "rx-discard:%d",
+                ESP_EARLY_LOGE(TWAI_LOG_TAG, "rx-discard:%" PRIu32,
                                twai.stats.rx_discard);
             }
             else if (twai.rx_buf->data_write_pointer(&can_frame))
@@ -651,7 +652,7 @@ static inline uint32_t twai_rx_frames()
             else
             {
                 twai.stats.rx_missed++;
-                ESP_EARLY_LOGE(TWAI_LOG_TAG, "rx-missed:%d",
+                ESP_EARLY_LOGE(TWAI_LOG_TAG, "rx-missed:%" PRIu32,
                                twai.stats.rx_missed);
             }
         }
@@ -787,14 +788,16 @@ static void twai_isr(void *arg)
     if (events & TWAI_HAL_EVENT_BUS_ERR)
     {
         twai.stats.bus_error++;
-        ESP_EARLY_LOGV(TWAI_LOG_TAG, "bus-error:%d", twai.stats.bus_error);
+        ESP_EARLY_LOGV(TWAI_LOG_TAG, "bus-error:%" PRIu32,
+                       twai.stats.bus_error);
     }
 
     // Arbitration error detected
     if (events & TWAI_HAL_EVENT_ARB_LOST)
     {
         twai.stats.arb_error++;
-        ESP_EARLY_LOGV(TWAI_LOG_TAG, "arb-lost:%d", twai.stats.arb_error);
+        ESP_EARLY_LOGV(TWAI_LOG_TAG, "arb-lost:%" PRIu32,
+                       twai.stats.arb_error);
     }
 
     if (wakeup == pdTRUE)
@@ -875,9 +878,11 @@ void* twai_watchdog(void* param)
         {
             LOG(INFO,
                 "ESP-TWAI: "
-                "RX:%d (pending:%zu,overrun:%d,discard:%d,missed:%d,lost:%d) "
-                "TX:%d (pending:%zu,suc:%d,fail:%d) "
-                "Bus (arb-err:%d,err:%d,state:%s)",
+                "RX:%" PRIu32 " (pending:%zu,overrun:%" PRIu32
+                ",discard:%" PRIu32 ",missed:%" PRIu32 ",lost:%" PRIu32 ") "
+                "TX:%" PRIu32 " (pending:%zu,suc:%" PRIu32
+                ",fail:%" PRIu32 ") "
+                "Bus (arb-err:%" PRIu32 ",err:%" PRIu32 ",state:%s)",
                 twai.stats.rx_processed, twai.rx_buf->pending(),
                 twai.stats.rx_overrun, twai.stats.rx_discard,
                 twai.stats.rx_missed, twai.stats.rx_lost,
