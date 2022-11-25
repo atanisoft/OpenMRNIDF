@@ -23,6 +23,12 @@ set(IDF_DEPS
     bootloader_support
     esp_app_format)
 
+if (IDF_VERSION_MAJOR LESS 5)
+    # esp_ipc component has been merged into esp_system as part of IDF v5
+    # mdns has been externalized in IDF v5
+    list(APPEND IDF_DEPS esp_ipc mdns)
+endif()
+
 idf_component_register(SRC_DIRS "${SOURCE_DIRS}"
                        INCLUDE_DIRS "src"
                        REQUIRES "${IDF_DEPS}")
@@ -32,13 +38,13 @@ idf_component_register(SRC_DIRS "${SOURCE_DIRS}"
 ###############################################################################
 
 target_compile_options(${COMPONENT_LIB} PUBLIC -DESP32)
+target_compile_options(${COMPONENT_LIB} PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-Wno-volatile>)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-type-limits)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-ignored-qualifiers)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-missing-field-initializers)
 target_compile_options(${COMPONENT_LIB} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wno-class-memaccess>)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-implicit-fallthrough)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error=nonnull)
-target_compile_options(${COMPONENT_LIB} PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-Wno-volatile>)
 target_compile_options(${COMPONENT_LIB} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wno-redundant-move>)
 
 ###############################################################################
