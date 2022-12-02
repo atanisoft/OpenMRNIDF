@@ -80,8 +80,7 @@ public:
   /// filesystem.
   static void display(const char *output_path = nullptr)
   {
-#if CONFIG_ESP32_ENABLE_COREDUMP_TO_FLASH && \
-    ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,4,0)
+#if CONFIG_ESP32_ENABLE_COREDUMP_TO_FLASH
     if (is_present())
     {
       esp_core_dump_summary_t details;
@@ -136,7 +135,7 @@ public:
         }
       }
     }
-#endif // CONFIG_ESP32_ENABLE_COREDUMP_TO_FLASH && IDF v4.4+
+#endif // CONFIG_ESP32_ENABLE_COREDUMP_TO_FLASH
   }
 
   /// Utility method to cleanup a core dump.

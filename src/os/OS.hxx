@@ -732,7 +732,7 @@ private:
     /** handle to event object */
     EventGroupHandle_t event;
 };
-#elif defined(ARDUINO) && !defined(ESP32)
+#elif defined(ARDUINO) && !defined(ESP_PLATFORM)
 
 typedef uint32_t OSEventType;
 

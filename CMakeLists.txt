@@ -37,7 +37,6 @@ idf_component_register(SRC_DIRS "${SOURCE_DIRS}"
 # Suppress compilation warnings in OpenMRN
 ###############################################################################
 
-target_compile_options(${COMPONENT_LIB} PUBLIC -DESP32)
 target_compile_options(${COMPONENT_LIB} PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-Wno-volatile>)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-type-limits)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-ignored-qualifiers)

@@ -43,16 +43,8 @@
 #include <driver/adc.h>
 #include <driver/gpio.h>
 #include <esp_idf_version.h>
-#include <soc/adc_channel.h>
-
-// esp_rom_gpio.h is a target agnostic replacement for esp32/rom/gpio.h
-#if __has_include(<esp_rom_gpio.h>)
 #include <esp_rom_gpio.h>
-#elif ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,0,0)
-#include <rom/gpio.h>
-#else
-#include <esp32/rom/gpio.h>
-#endif
+#include <soc/adc_channel.h>
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,0,0)
 #include <soc/gpio_struct.h>
@@ -126,7 +118,7 @@ public:
 #else
     static_assert(!(PIN_NUM >= 6 && PIN_NUM <= 11)
                 , "Pin is reserved for flash usage.");
-#if defined(BOARD_HAS_PSRAM)
+#if defined(BOARD_HAS_PSRAM) || defined(CONFIG_SPIRAM_SUPPORT)
     static_assert(PIN_NUM != 16 && PIN_NUM != 17
                 , "Pin is reserved for PSRAM usage.");
 #endif // BOARD_HAS_PSRAM
@@ -238,11 +230,7 @@ public:
         LOG(VERBOSE,
             "[Esp32Gpio] Configuring output pin %d, default value: %d",
             PIN_NUM, SAFE_VALUE);
-#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,3,0)
-        gpio_pad_select_gpio(PIN_NUM);
-#else // IDF v4.4 (or later)
         esp_rom_gpio_pad_select_gpio(PIN_NUM);
-#endif // IDF v4.3 (or earlier)
         gpio_config_t cfg;
         memset(&cfg, 0, sizeof(gpio_config_t));
         cfg.pin_bit_mask = BIT64(PIN_NUM);
@@ -358,11 +346,7 @@ public:
     {
         LOG(VERBOSE, "[Esp32Gpio] Configuring input pin %d, PUEN: %d, PDEN: %d",
             PIN_NUM, PUEN, PDEN);
-#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,3,0)
-        gpio_pad_select_gpio(PIN_NUM);
-#else // IDF v4.4 (or later)
         esp_rom_gpio_pad_select_gpio(PIN_NUM);
-#endif // IDF v4.3 (or earlier)
         gpio_config_t cfg;
         memset(&cfg, 0, sizeof(gpio_config_t));
         cfg.pin_bit_mask = BIT64(PIN_NUM);

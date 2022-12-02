@@ -41,10 +41,6 @@
 
 #include "sdkconfig.h"
 
-#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(4,3,0)
-#error ESP32 Bootloader is only supported with ESP-IDF v4.3+
-#endif // IDF v4.3+
-
 // Enable streaming support for the bootloader
 #define BOOTLOADER_STREAM
 // Set the buffer size to half the sector size to minimize the flash writes.
@@ -53,11 +49,7 @@
 #include <driver/twai.h>
 
 #include <esp_app_format.h>
-
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,4,0)
 #include <esp_chip_info.h>
-#endif // IDF v4.4+
-
 #include <esp_ota_ops.h>
 #if defined(CONFIG_IDF_TARGET_ESP32)
 #include <esp32/rom/rtc.h>

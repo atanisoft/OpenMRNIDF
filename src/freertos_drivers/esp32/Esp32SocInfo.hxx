@@ -34,19 +34,11 @@
 #ifndef _FREERTOS_DRIVERS_ESP32_ESP32SOCINFO_HXX_
 #define _FREERTOS_DRIVERS_ESP32_ESP32SOCINFO_HXX_
 
-#include <stdint.h>
-
-#if defined(ESP32)
 
 #include "sdkconfig.h"
 
-#include <esp_idf_version.h>
 #if defined(CONFIG_IDF_TARGET_ESP32)
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
 #include <esp32/rom/rtc.h>
-#else
-#include <rom/rtc.h>
-#endif // IDF v4.3+
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
 #include <esp32s2/rom/rtc.h>
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
@@ -58,6 +50,7 @@
 #elif defined(CONFIG_IDF_TARGET_ESP32C2)
 #include <esp32c2/rom/rtc.h>
 #endif
+#include <stdint.h>
 
 namespace openmrn_arduino
 {
@@ -75,7 +68,5 @@ public:
 } // namespace openmrn_arduino
 
 using openmrn_arduino::Esp32SocInfo;
-
-#endif // ESP32
 
 #endif // _FREERTOS_DRIVERS_ESP32_ESP32SOCINFO_HXX_

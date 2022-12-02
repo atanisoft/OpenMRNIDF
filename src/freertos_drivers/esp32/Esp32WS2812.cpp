@@ -34,7 +34,7 @@
  */
 
 // Ensure we only compile this code for the ESP32
-#ifdef ESP32
+#ifdef ESP_PLATFORM
 
 #include "freertos_drivers/esp32/Esp32WS2812.hxx"
 #include "utils/logging.h"

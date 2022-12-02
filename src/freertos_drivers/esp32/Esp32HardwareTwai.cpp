@@ -37,12 +37,10 @@
 
 // Ensure we only compile this code for the ESP32 family of MCUs and that the
 // ESP-IDF version is supported for this code.
-#if defined(ESP32)
+#if defined(ESP_PLATFORM)
 
 #include "sdkconfig.h"
 #include <esp_idf_version.h>
-
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
 
 #if CONFIG_VFS_SUPPORT_TERMIOS
 // remove defines added by arduino-esp32 core/esp32/binary.h which are
@@ -1035,6 +1033,4 @@ void Esp32HardwareTwai::get_driver_stats(esp32_twai_stats_t *stats)
 
 } // namespace openmrn_arduino
 
-#endif // IDF v4.3+
-
-#endif // ESP32
+#endif // ESP_PLATFORM
