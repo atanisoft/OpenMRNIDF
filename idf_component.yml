@@ -7,4 +7,5 @@ targets:
 dependencies:
   idf: ">=5.0"
   espressif/mdns: "*"
-    if: "idf_version >=5.0"
+#    rules:
+#      if: "idf_version >=5.0"
