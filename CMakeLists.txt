@@ -16,6 +16,7 @@ set(IDF_DEPS
     app_update
     driver
     esp_system
+    hal
     heap
     vfs
     mdns)
