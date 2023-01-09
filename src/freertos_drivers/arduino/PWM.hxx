@@ -83,14 +83,13 @@ public:
 
 protected:
     /// Constructor.
-    PWM()
-    {
-    }
+    constexpr PWM() = default;
 
-    /// Destructor.
-    ~PWM()
-    {
-    }
+    /// Destructor. This is protected, because only child classes should be
+    /// allowed to destruct a PWM; but no implementation exists in order to
+    /// make the the destructor trivial for C++. A trivial destructor is
+    /// required for a constexpr class.
+    ~PWM() = default;
 
 private:
 
