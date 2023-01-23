@@ -90,7 +90,7 @@ protected:
     /// make the the destructor trivial for C++. A trivial destructor is
     /// required for a constexpr class.
     ~PWM() = default;
-
+    
 private:
 
     DISALLOW_COPY_AND_ASSIGN(PWM);
