@@ -242,8 +242,9 @@ bool try_send_can_frame(const struct can_frame &frame)
 void get_flash_boundaries(const void **flash_min, const void **flash_max,
     const struct app_header **app_header)
 {
-    LOG(BOOTLOADER_LOG_LEVEL, "[Bootloader] get_flash_boundaries(%d,%d)", 0,
-        esp_bl_state.app_header.app_size);
+    LOG(BOOTLOADER_LOG_LEVEL,
+        "[Bootloader] get_flash_boundaries(%" PRIu32 ", %" PRIu32 ")",
+        0, esp_bl_state.app_header.app_size);
     *((uint32_t *)flash_min) = 0;
     *((uint32_t *)flash_max) = esp_bl_state.app_header.app_size;
     *app_header = &esp_bl_state.app_header;
