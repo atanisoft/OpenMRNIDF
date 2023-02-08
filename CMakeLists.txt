@@ -24,7 +24,10 @@ set(IDF_DEPS
     bootloader_support
     esp_app_format)
 
-if (IDF_VERSION_MAJOR LESS 5)
+if (IDF_VERSION_MAJOR GREATER_EQUAL 5)
+    # esp_adc component has replaced driver/adc.h in IDF v5
+    list(APPEND IDF_DEPS esp_adc)
+else()
     # esp_ipc component has been merged into esp_system as part of IDF v5
     # mdns has been externalized in IDF v5
     list(APPEND IDF_DEPS esp_ipc mdns)
