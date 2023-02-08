@@ -42,6 +42,15 @@
 #error Esp32AdcOneShot.hxx is not supported with ESP-IDF v4.x or earlier
 #endif
 
+#if defined(__has_include)
+#if __has_include(<driver/adc_types_legacy.h>)
+// include legacy types so ADC1_CHANNEL_0 and ADC1_CHANNEL_0_GPIO_NUM etc are
+// defined, soc/adc_channel.h includes references to these on release/v5.0
+// branch and is planned for update in later relase versions.
+#include <driver/adc_types_legacy.h>
+#endif // __has_include driver/adc_types_legacy.h
+#endif // has_include
+
 #include <esp_adc/adc_oneshot.h>
 #include <soc/adc_channel.h>
 
