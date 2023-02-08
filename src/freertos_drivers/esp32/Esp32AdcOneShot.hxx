@@ -51,9 +51,10 @@
 template <class Defs> struct Esp32ADCInput : public Defs
 {
 public:
+    using Defs::ATTEN;
+    using Defs::BITS;
     using Defs::CHANNEL;
     using Defs::PIN;
-    using Defs::CHANNEL_CONFIG;
     using Defs::HANDLE;
 
     static void hw_init()
@@ -71,15 +72,19 @@ public:
 #endif
             .ulp_mode = ADC_ULP_MODE_DISABLE,
         };
+        const adc_oneshot_chan_cfg_t channel_config =
+        {
+            .atten = ATTEN,
+            .bitwidth = BITS,
+        };
 
         LOG(VERBOSE,
             "[Esp32ADCInput] Configuring ADC%d:%d input pin %d, "
             "attenuation %d, bits %d",
-            unit_config.unit_id, CHANNEL, PIN, CHANNEL_CONFIG.atten,
-            CHANNEL_CONFIG.bitwidth);
-        ESP_ERROR_CHECK(adc_oneshot_new_unit(unit_config, &HANDLE));
+            unit_config.unit_id, CHANNEL, PIN, ATTEN, BITS);
+        ESP_ERROR_CHECK(adc_oneshot_new_unit(&unit_config, &HANDLE));
         ESP_ERROR_CHECK(
-            adc_oneshot_config_channel(&HANDLE, CHANNEL, &CHANNEL_CONFIG));
+            adc_oneshot_config_channel(HANDLE, CHANNEL, &channel_config));
     }
 
     /// NO-OP
@@ -189,12 +194,9 @@ public:
     {                                                                          \
         static const adc_channel_t CHANNEL = (adc_channel_t)ADC_CHANNEL;       \
         static const gpio_num_t PIN = (gpio_num_t)ADC_CHANNEL##_GPIO_NUM;      \
-        static const adc_oneshot_chan_cfg_t CHANNEL_CONFIG =                   \
-        {                                                                      \
-            .atten = (adc_atten_t)ATTENUATION,                                 \
-            .bitwidth = (adc_bits_width_t)BIT_RANGE,                           \
-        };                                                                     \
-        adc_oneshot_unit_handle_t HANDLE;                                      \
+        static const adc_atten_t ATTEN = (adc_atten_t)ATTENUATION;             \
+        static const adc_bitwidth_t BITS = (adc_bitwidth_t)BIT_RANGE;          \
+        static adc_oneshot_unit_handle_t HANDLE;                               \
     public:                                                                    \
         static const gpio_num_t pin()                                          \
         {                                                                      \
@@ -205,6 +207,7 @@ public:
             return CHANNEL;                                                    \
         }                                                                      \
     };                                                                         \
+    adc_oneshot_unit_handle_t NAME##Defs::HANDLE;                              \
     typedef Esp32ADCInput<NAME##Defs> NAME##_Pin
 
 #endif // _DRIVERS_ESP32ADCONESHOT_HXX_
