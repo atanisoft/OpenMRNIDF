@@ -265,11 +265,11 @@ uint8_t Esp32SocInfo::print_soc_info()
     LOG(INFO, "[SoC] Heap: %.2fkB / %.2fkB",
         heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024.0f,
         heap_caps_get_total_size(MALLOC_CAP_INTERNAL) / 1024.0f);
-#if CONFIG_SPIRAM_SUPPORT || BOARD_HAS_PSRAM
+#if CONFIG_SPIRAM_SUPPORT || BOARD_HAS_PSRAM || CONFIG_CONFIG_SPIRAM
     LOG(INFO, "[SoC] PSRAM: %.2fkB / %.2fkB",
         heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024.0f,
         heap_caps_get_total_size(MALLOC_CAP_SPIRAM) / 1024.0f);
-#endif // CONFIG_SPIRAM_SUPPORT || BOARD_HAS_PSRAM
+#endif // CONFIG_SPIRAM_SUPPORT || BOARD_HAS_PSRAM || CONFIG_CONFIG_SPIRAM
 
     LOG(INFO, "[SoC] App running from partition: %s",
         esp_ota_get_running_partition()->label);
