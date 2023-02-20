@@ -587,7 +587,12 @@ private:
         }
 
         {
+// ESP-IDF v5.x has internal locking in the call to mktime() related to
+// environment variable retrieval which conflicts with the usage of the
+// AtomicHolder based locking.
+#ifndef ESP_PLATFORM
             AtomicHolder h(server_);
+#endif
             server_->seconds_ = mktime(&tm);
             server_->timestamp_ = OSTime::get_monotonic();
         }
