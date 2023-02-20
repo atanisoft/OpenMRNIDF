@@ -56,8 +56,10 @@
 
 // Enable streaming support for the bootloader
 #define BOOTLOADER_STREAM
+#ifndef WRITE_BUFFER_SIZE
 // Set the buffer size to half the sector size to minimize the flash writes.
 #define WRITE_BUFFER_SIZE (CONFIG_WL_SECTOR_SIZE / 2)
+#endif
 
 #include <driver/twai.h>
 
