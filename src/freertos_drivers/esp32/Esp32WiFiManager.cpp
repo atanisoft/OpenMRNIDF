@@ -570,6 +570,8 @@ void Esp32WiFiManager::stop_hub()
 // Creates a hub listener for this node after loading configuration details.
 void Esp32WiFiManager::start_hub()
 {
+    auto stack = static_cast<openlcb::SimpleCanStackBase *>(stack_);
+
     // Check if we already have a GC Hub running or not, if we do then we can
     // skip creating one. It would be best to validate the port in use but it
     // is not exposed by GcHub at this time.
@@ -578,7 +580,6 @@ void Esp32WiFiManager::start_hub()
         hubServiceName_ = cfg_.hub().service_name().read(configFd_);
         uint16_t hub_port = CDI_READ_TRIMMED(cfg_.hub().port, configFd_);
         LOG(INFO, "[HUB] Starting TCP/IP listener on port %" PRIu16, hub_port);
-        auto stack = static_cast<openlcb::SimpleCanStackBase *>(stack_);
         stack->start_tcp_hub_server(hub_port);
         auto hub = stack->get_tcp_hub_server();
 
