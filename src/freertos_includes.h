@@ -34,7 +34,6 @@
 
 #ifdef ESP_PLATFORM
 
-#include <esp_idf_version.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
@@ -47,8 +46,7 @@
 // enables the usage of legacy FreeRTOS data types, if that configuration option
 // is *NOT* selected *AND* IDF v5.0+ is in use we need to add compatibility
 // defines in order to compile OpenMRN successfully.
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,0,0) &&                           \
-    !defined(CONFIG_FREERTOS_ENABLE_BACKWARD_COMPATIBILITY)
+#if !defined(CONFIG_FREERTOS_ENABLE_BACKWARD_COMPATIBILITY)
 
 // used in os/os.c and os/os.h
 #define portTickType                  TickType_t

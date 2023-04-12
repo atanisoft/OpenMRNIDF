@@ -37,11 +37,6 @@
 
 #include "utils/logging.h"
 
-#include <esp_idf_version.h>
-#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5,0,0)
-#error Esp32AdcOneShot.hxx is not supported with ESP-IDF v4.x or earlier
-#endif
-
 #if defined(__has_include)
 #if __has_include(<driver/adc_types_legacy.h>)
 // include legacy types so ADC1_CHANNEL_0 and ADC1_CHANNEL_0_GPIO_NUM etc are

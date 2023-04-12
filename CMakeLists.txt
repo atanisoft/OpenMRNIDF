@@ -14,24 +14,16 @@ endif()
 
 set(IDF_DEPS
     app_update
+    bootloader_support
     driver
+    esp_adc
+    esp_app_format
     esp_system
-    hal
-    heap
-    vfs
     esp_wifi
     espcoredump
-    bootloader_support
-    esp_app_format)
-
-if (IDF_VERSION_MAJOR GREATER_EQUAL 5)
-    # esp_adc component has replaced driver/adc.h in IDF v5
-    list(APPEND IDF_DEPS esp_adc)
-else()
-    # esp_ipc component has been merged into esp_system as part of IDF v5
-    # mdns has been externalized in IDF v5
-    list(APPEND IDF_DEPS esp_ipc mdns)
-endif()
+    hal
+    heap
+    vfs)
 
 idf_component_register(SRC_DIRS "${SOURCE_DIRS}"
                        INCLUDE_DIRS "src"
@@ -49,9 +41,3 @@ target_compile_options(${COMPONENT_LIB} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wno-c
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-implicit-fallthrough)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error=nonnull)
 target_compile_options(${COMPONENT_LIB} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wno-redundant-move>)
-
-###############################################################################
-# Silence a few warnings for various files to reduce compilation noise
-###############################################################################
-set_source_files_properties(src/freertos_drivers/esp32/Esp32WiFiManager.cpp PROPERTIES COMPILE_FLAGS
-    "-Wno-ignored-qualifiers -DESP32_WIFIMGR_SOCKETPARAMS_LOG_LEVEL=VERBOSE -DESP32_WIFIMGR_MDNS_LOOKUP_LOG_LEVEL=VERBOSE")

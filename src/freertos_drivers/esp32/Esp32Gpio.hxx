@@ -35,28 +35,17 @@
 #ifndef _DRIVERS_ESP32GPIO_HXX_
 #define _DRIVERS_ESP32GPIO_HXX_
 
-// must be included first to ensure ESP_IDF_VERSION and ESP_IDF_VERSION_VAL
-// macros are available.
-#include <esp_idf_version.h>
-
 #include "freertos_drivers/arduino/GpioWrapper.hxx"
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,0,0)
 #include "freertos_drivers/esp32/Esp32AdcOneShot.hxx"
-#else // IDF v4.x
-#include "freertos_drivers/esp32/Esp32AdcLegacy.hxx"
-#endif // IDF v5.0+
 #include "os/Gpio.hxx"
 #include "utils/logging.h"
 #include "utils/macros.h"
 
 #include <driver/gpio.h>
-#include <esp_idf_version.h>
 #include <esp_rom_gpio.h>
 #include <soc/adc_channel.h>
 
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,0,0)
 #include <soc/gpio_struct.h>
-#endif
 
 #if defined(CONFIG_IDF_TARGET_ESP32C3)
 /// Helper macro to test if a pin has been configured for output.

@@ -1655,16 +1655,10 @@ int mdns_lookup(
 /// @return zero for success, -1 for failure.
 int getifaddrs(struct ifaddrs **ifap)
 {
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,0,0)
     esp_netif_ip_info_t ip_info;
-#else
-    tcpip_adapter_ip_info_t ip_info;
-#endif // IDF v5+
 
     /* start with something "safe" in case we bail out early */
     *ifap = nullptr;
-
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,0,0)
 
     // Lookup the interface by it's internal name assigned by ESP-IDF.
     esp_netif_t *iface = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
@@ -1682,17 +1676,6 @@ int getifaddrs(struct ifaddrs **ifap)
         errno = EADDRNOTAVAIL;
         return -1;
     }
-#else // IDF v4 (or lower)
-    if (!tcpip_adapter_is_netif_up(TCPIP_ADAPTER_IF_STA))
-    {
-        // Station TCP/IP interface is not up
-        errno = ENODEV;
-        return -1;
-    }
-
-    // retrieve TCP/IP address from the interface
-    tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &ip_info);
-#endif // IDF v5+
 
     // allocate memory for various pieces of ifaddrs
     std::unique_ptr<struct ifaddrs> ia(new struct ifaddrs);
