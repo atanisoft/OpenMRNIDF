@@ -106,7 +106,7 @@ public:
     static int sample()
     {
         int value = 0;
-        ESP_ERROR_CHECK(adc_oneshot_read(&HANDLE, CHANNEL, &value));
+        ESP_ERROR_CHECK(adc_oneshot_read(HANDLE, CHANNEL, &value));
         return value;
     }
 };
