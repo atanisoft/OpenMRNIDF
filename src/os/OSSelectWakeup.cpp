@@ -113,6 +113,7 @@ int OSSelectWakeup::select(int nfds, fd_set *readfds,
 #include <esp_system.h>
 #include <esp_vfs.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
