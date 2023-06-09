@@ -50,8 +50,12 @@
 
 #include <assert.h>
 #include <driver/gpio.h>
-#include <esp_private/periph_ctrl.h>
 #include <esp_idf_version.h>
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,1,0)
+#include <esp_clk_tree.h>
+#endif
+#include <esp_private/periph_ctrl.h>
 #include <esp_ipc.h>
 #include <esp_log.h>
 #include <esp_rom_gpio.h>
@@ -1003,21 +1007,46 @@ void Esp32HardwareTwai::hw_init()
 
     periph_module_reset(PERIPH_TWAI_MODULE);
     periph_module_enable(PERIPH_TWAI_MODULE);
+
+    twai_timing_config_t timingCfg = TWAI_TIMING_CONFIG_125KBITS();
+    twai_filter_config_t filterCfg = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,1,0)
+    // default clock source if not specified in config.
+    if (timingCfg.clk_src == 0)
+    {
+        timingCfg.clk_src = TWAI_CLK_SRC_DEFAULT;
+    }
     twai_hal_config_t twai_hal_cfg = 
     {
         .controller_id = 0,
-        .clock_source_hz = TWAI_CLK_SRC_DEFAULT,
+        .clock_source_hz = 0,
     };
+
+    // retrieve the clock frequency from the SoC
+    esp_clk_tree_src_get_freq_hz((soc_module_clk_t)timingCfg.clk_src,
+        ESP_CLK_TREE_SRC_FREQ_PRECISION_CACHED, &twai_hal_cfg.clock_source_hz);
+
+    // BRP validations
+    uint32_t brp = timingCfg.brp;
+    if (timingCfg.quanta_resolution_hz)
+    {
+        HASSERT(twai_hal_cfg.clock_source_hz % timingCfg.quanta_resolution_hz == 0);
+        brp = twai_hal_cfg.clock_source_hz / timingCfg.quanta_resolution_hz;
+    }
+    HASSERT(twai_ll_check_brp_validation(brp));
+
+    // Initialize the low level HAL APIs
     HASSERT(twai_hal_init(&twai.context, &twai_hal_cfg));
 #else
+    // Initialize the low level HAL APIs
     HASSERT(twai_hal_init(&twai.context));
 #endif // IDF v5.1+
-    twai_timing_config_t timingCfg = TWAI_TIMING_CONFIG_125KBITS();
-    twai_filter_config_t filterCfg = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+
     LOG(VERBOSE, "ESP-TWAI: Initiailizing peripheral");
     twai_hal_configure(&twai.context, &timingCfg, &filterCfg,
         TWAI_DEFAULT_INTERRUPTS, 0);
+
 #if SOC_CPU_CORES_NUM > 1
     ESP_ERROR_CHECK(
         esp_ipc_call_blocking(preferredIsrCore_, esp32_twai_isr_init, nullptr));
