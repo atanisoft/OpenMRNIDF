@@ -1137,12 +1137,17 @@ void Esp32WiFiManager::configure_sntp()
     {
         sntpConfigured_ = true;
         LOG(INFO, "[SNTP] Polling %s for time updates", sntpServer_.c_str());
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,1,0)
+        esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
+        esp_sntp_setservername(0, sntpServer_.c_str());
+        sntp_set_time_sync_notification_cb(sntp_update_received);
+        esp_sntp_init();
+#else
         sntp_setoperatingmode(SNTP_OPMODE_POLL);
-        // IDF v3.3 does not offer const correctness so we need to drop const
-        // when setting the hostname for SNTP.
-        sntp_setservername(0, const_cast<char *>(sntpServer_.c_str()));
+        sntp_setservername(0, sntpServer_.c_str());
         sntp_set_time_sync_notification_cb(sntp_update_received);
         sntp_init();
+#endif // IDF v5.1+
 
         if (!timeZone_.empty())
         {
