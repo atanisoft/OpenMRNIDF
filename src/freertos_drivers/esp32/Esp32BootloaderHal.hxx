@@ -116,9 +116,11 @@ struct Esp32BootloaderState
 /// Bootloader configuration data.
 static Esp32BootloaderState esp_bl_state;
 
-/// Maximum time to wait for a TWAI frame to be received or transmitted before
-/// giving up.
-static constexpr BaseType_t MAX_TWAI_WAIT = pdMS_TO_TICKS(250);
+/// Maximum time to wait for a TWAI frame to be received before giving up.
+static constexpr BaseType_t MAX_TWAI_WAIT_RX = pdMS_TO_TICKS(250);
+
+/// Maximum time to wait for a TWAI frame to be transmitted before giving up.
+static constexpr BaseType_t MAX_TWAI_WAIT_TX = pdMS_TO_TICKS(0);
 
 /// Flag used to indicate that we have been requested to enter the bootloader
 /// instead of normal node operations. Note that this value will not be
@@ -128,7 +130,7 @@ static uint32_t RTC_NOINIT_ATTR bootloader_request;
 
 /// Value to be assigned to @ref bootloader_request when the bootloader should
 /// run instead of normal node operations.
-static constexpr uint32_t RTC_BOOL_TRUE = 1;
+static constexpr uint32_t RTC_BOOL_TRUE = 0x92e01a42;
 
 /// Default value to assign to @ref bootloader_request when the ESP32-C3 starts
 /// the first time or when the bootloader should not be run.
@@ -191,7 +193,7 @@ bool read_can_frame(struct can_frame *frame)
 {
     twai_message_t rx_msg;
     memset(&rx_msg, 0, sizeof(twai_message_t));
-    if (twai_receive(&rx_msg, MAX_TWAI_WAIT) == ESP_OK)
+    if (twai_receive(&rx_msg, MAX_TWAI_WAIT_RX) == ESP_OK)
     {
         LOG(BOOTLOADER_TWAI_LOG_LEVEL, "[Bootloader] CAN_RX");
         frame->can_id = rx_msg.identifier;
@@ -218,7 +220,7 @@ bool try_send_can_frame(const struct can_frame &frame)
     tx_msg.extd = frame.can_eff;
     tx_msg.rtr = frame.can_rtr;
     memcpy(tx_msg.data, frame.data, frame.can_dlc);
-    if (twai_transmit(&tx_msg, MAX_TWAI_WAIT) == ESP_OK)
+    if (twai_transmit(&tx_msg, MAX_TWAI_WAIT_TX) == ESP_OK)
     {
         LOG(BOOTLOADER_TWAI_LOG_LEVEL, "[Bootloader] CAN_TX");
         return true;
@@ -366,6 +368,21 @@ void write_flash(const void *address, const void *data, uint32_t size_bytes)
             // reset the RTC persistent variable to not enter bootloader on
             // next restart.
             bootloader_request = RTC_BOOL_FALSE;
+
+            // cleanup the OTA handle since we are aborting.
+            if (esp_bl_state.ota_handle != 0)
+            {
+                // abort the OTA operation, we do not validate the return code
+                // other than logging the error (if any) as this method only
+                // cleans up the ota_handle reference within the OTA system and
+                // does not impact future usage.
+                ESP_ERROR_CHECK_WITHOUT_ABORT(
+                    esp_ota_abort(esp_bl_state.ota_handle));
+            }
+
+            // invalidate ota_handle in case the esp32 does not reboot before
+            // the next time address zero comes up again.
+            esp_bl_state.ota_handle = 0;
             esp_restart();
         }
     }
@@ -380,9 +397,10 @@ void write_flash(const void *address, const void *data, uint32_t size_bytes)
 /// Callback from the bootloader to indicate that the full firmware file has
 /// been received.
 ///
-/// @return zero if the firmware has been received and updated to be used for
-/// the next startup, otherwise non-zero and an error will be printed to the
-/// console.
+/// @return `ERROR_CODE_OK` (0x0000) if the firmware has been received and
+/// updated to be used for the next startup, otherwise `ERROR_FIRMWARE_CSUM`
+/// (0x2088) indicating there was a failure that may be recoverable by
+/// retrying.
 uint16_t flash_complete(void)
 {
     LOG(INFO, "[Bootloader] Finalizing firmware update");
@@ -399,13 +417,16 @@ uint16_t flash_complete(void)
         if (res != ESP_OK)
         {
             LOG_ERROR("[Bootloader] Failed to update the boot partition!");
+            return openlcb::Defs::ERROR_FIRMWARE_CSUM;
         }
     }
-    else if (res == ESP_ERR_OTA_VALIDATE_FAILED)
+    else
     {
-        LOG_ERROR("[Bootloader] Firmware image failed validation, aborting!");
+        LOG_ERROR("[Bootloader] Firmware update failed: %s (%04x), aborting!",
+                  esp_err_to_name(res), res);
+        return openlcb::Defs::ERROR_FIRMWARE_CSUM;
     }
-    return res != ESP_OK;
+    return openlcb::Defs::ERROR_CODE_OK;
 }
 
 /// Callback from the bootloader to calculate the checksum of a data block.

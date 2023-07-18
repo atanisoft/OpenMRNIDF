@@ -618,7 +618,7 @@ static inline uint32_t twai_rx_frames()
             {
                 // DLC is longer than supported, discard the frame.
                 twai.stats.rx_discard++;
-                ESP_EARLY_LOGE(TWAI_LOG_TAG, "rx-discard:%" PRIu32,
+                ESP_EARLY_LOGE(TWAI_LOG_TAG, "rx-discard:%zu",
                                twai.stats.rx_discard);
             }
             else if (twai.rx_buf->data_write_pointer(&can_frame))
@@ -650,7 +650,7 @@ static inline uint32_t twai_rx_frames()
             else
             {
                 twai.stats.rx_missed++;
-                ESP_EARLY_LOGE(TWAI_LOG_TAG, "rx-missed:%" PRIu32,
+                ESP_EARLY_LOGE(TWAI_LOG_TAG, "rx-missed:%zu",
                                twai.stats.rx_missed);
             }
         }
@@ -786,16 +786,14 @@ static void twai_isr(void *arg)
     if (events & TWAI_HAL_EVENT_BUS_ERR)
     {
         twai.stats.bus_error++;
-        ESP_EARLY_LOGV(TWAI_LOG_TAG, "bus-error:%" PRIu32,
-                       twai.stats.bus_error);
+        ESP_EARLY_LOGV(TWAI_LOG_TAG, "bus-error:%zu", twai.stats.bus_error);
     }
 
     // Arbitration error detected
     if (events & TWAI_HAL_EVENT_ARB_LOST)
     {
-        twai.stats.arb_error++;
-        ESP_EARLY_LOGV(TWAI_LOG_TAG, "arb-lost:%" PRIu32,
-                       twai.stats.arb_error);
+        twai.stats.arb_loss++;
+        ESP_EARLY_LOGV(TWAI_LOG_TAG, "arb-loss:%zu", twai.stats.arb_loss);
     }
 
     if (wakeup == pdTRUE)
@@ -876,17 +874,15 @@ void* twai_watchdog(void* param)
         {
             LOG(INFO,
                 "ESP-TWAI: "
-                "RX:%" PRIu32 " (pending:%zu,overrun:%" PRIu32
-                ",discard:%" PRIu32 ",missed:%" PRIu32 ",lost:%" PRIu32 ") "
-                "TX:%" PRIu32 " (pending:%zu,suc:%" PRIu32
-                ",fail:%" PRIu32 ") "
-                "Bus (arb-err:%" PRIu32 ",err:%" PRIu32 ",state:%s)",
+                "RX:%zu (pending:%zu,overrun:%zu,discard:%zu,miss:%zu,lost:%zu) "
+                "TX:%zu (pending:%zu,suc:%zu,fail:%zu) "
+                "Bus (arb-loss:%zu,err:%zu,state:%s)",
                 twai.stats.rx_processed, twai.rx_buf->pending(),
                 twai.stats.rx_overrun, twai.stats.rx_discard,
                 twai.stats.rx_missed, twai.stats.rx_lost,
                 twai.stats.tx_processed, twai.tx_buf->pending(),
                 twai.stats.tx_success, twai.stats.tx_failed,
-                twai.stats.arb_error, twai.stats.bus_error,
+                twai.stats.arb_loss, twai.stats.bus_error,
                 is_twai_running() ? "Running" :
                 is_twai_recovering() ? "Recovering" :
                 is_twai_err_warn() ? "Err-Warn" :
