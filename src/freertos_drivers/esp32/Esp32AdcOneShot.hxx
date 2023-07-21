@@ -47,6 +47,7 @@
 #endif // has_include
 
 #include <esp_adc/adc_oneshot.h>
+#include <esp_idf_version.h>
 #include <soc/adc_channel.h>
 
 /// Defines an ADC input pin.
@@ -74,6 +75,11 @@ public:
 #elif CONFIG_IDF_TARGET_ESP32C3
             .unit_id = PIN <= 4 ? ADC_UNIT_1 : ADC_UNIT_2,
 #endif
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,1,0)
+            // use default value from driver, no constant available thus using
+            // 0 with type cast.
+            .clk_src = (adc_oneshot_clk_src_t)0,
+#endif // IDF v5.1+
             .ulp_mode = ADC_ULP_MODE_DISABLE,
         };
         const adc_oneshot_chan_cfg_t channel_config =
