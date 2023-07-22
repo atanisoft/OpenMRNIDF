@@ -48,7 +48,33 @@
 
 #include <esp_adc/adc_oneshot.h>
 #include <esp_idf_version.h>
+#include <soc/soc_caps.h>
 #include <soc/adc_channel.h>
+
+/// This class manages a single ADC Unit.
+class Esp32ADCUnitManager
+{
+public:
+    /// Constructor.
+    ///
+    /// @param unit @ref adc_unit_t that this instance owns the handle for.
+    Esp32ADCUnitManager(const adc_unit_t unit);
+
+    /// Initializes the underlying hardware unit if not already initialized.
+    void hw_init();
+
+    /// @returns the handle to use for this ADC unit.
+    adc_oneshot_unit_handle_t handle();
+private:
+    /// ADC unit identifier that this instance manages.
+    const adc_unit_t unit_;
+
+    /// @ref adc_oneshot_unit_handle_t that this instance manages.
+    adc_oneshot_unit_handle_t handle_;
+};
+
+/// Declaration of ADC unit managers.
+extern Esp32ADCUnitManager Esp32AdcUnit[SOC_ADC_PERIPH_NUM];
 
 /// Defines an ADC input pin.
 ///
@@ -60,50 +86,45 @@ public:
     using Defs::BITS;
     using Defs::CHANNEL;
     using Defs::PIN;
-    using Defs::HANDLE;
 
     static void hw_init()
     {
-        // due to using #if/#elif/#endif it is not possible to include this in
-        // the ADC_PIN wrapper code.
-        const adc_oneshot_unit_init_cfg_t unit_config =
-        {
 #if CONFIG_IDF_TARGET_ESP32
-            .unit_id = PIN >= 30 ? ADC_UNIT_1 : ADC_UNIT_2,
+        const adc_unit_t unit = PIN >= 30 ? ADC_UNIT_1 : ADC_UNIT_2;
 #elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
-            .unit_id = PIN <= 10 ? ADC_UNIT_1 : ADC_UNIT_2,
+        const adc_unit_t unit = PIN <= 10 ? ADC_UNIT_1 : ADC_UNIT_2;
 #elif CONFIG_IDF_TARGET_ESP32C3
-            .unit_id = PIN <= 4 ? ADC_UNIT_1 : ADC_UNIT_2,
+        const adc_unit_t unit = PIN <= 4 ? ADC_UNIT_1 : ADC_UNIT_2;
+#else
+        #warning Unable to determine ADC unit number, defaulting to ADC_UNIT_1
+        const adc_unit_t unit = ADC_UNIT_1;
 #endif
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,1,0)
-            // use default value from driver, no constant available thus using
-            // 0 with type cast.
-            .clk_src = (adc_oneshot_clk_src_t)0,
-#endif // IDF v5.1+
-            .ulp_mode = ADC_ULP_MODE_DISABLE,
-        };
         const adc_oneshot_chan_cfg_t channel_config =
         {
             .atten = ATTEN,
             .bitwidth = BITS,
         };
 
+        // Initialize the ADC unit.
+        Esp32AdcUnit[unit].hw_init();
+
         LOG(VERBOSE,
             "[Esp32ADCInput] Configuring ADC%d:%d input pin %d, "
             "attenuation %d, bits %d",
-            unit_config.unit_id, CHANNEL, PIN, ATTEN, BITS);
-        ESP_ERROR_CHECK(adc_oneshot_new_unit(&unit_config, &HANDLE));
-        ESP_ERROR_CHECK(
-            adc_oneshot_config_channel(HANDLE, CHANNEL, &channel_config));
+            unit, CHANNEL, PIN, ATTEN, BITS);
+
+        // Initialize the ADC channel using the handle from the unit manager.
+        ESP_ERROR_CHECK(adc_oneshot_config_channel(
+            Esp32AdcUnit[unit].handle(), CHANNEL, &channel_config));
     }
 
-    /// NO-OP
+    /// NO-OP, unsupported
     static void hw_set_to_safe()
     {
         // NO-OP
     }
 
-    /// NO-OP
+    /// NO-OP, unsupported
     static void set(bool value)
     {
         // NO-OP
@@ -111,8 +132,18 @@ public:
 
     static int sample()
     {
+#if CONFIG_IDF_TARGET_ESP32
+        const adc_unit_t unit = PIN >= 30 ? ADC_UNIT_1 : ADC_UNIT_2;
+#elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
+        const adc_unit_t unit = PIN <= 10 ? ADC_UNIT_1 : ADC_UNIT_2;
+#elif CONFIG_IDF_TARGET_ESP32C3
+        const adc_unit_t unit = PIN <= 4 ? ADC_UNIT_1 : ADC_UNIT_2;
+#else
+        const adc_unit_t unit = ADC_UNIT_1;
+#endif
         int value = 0;
-        ESP_ERROR_CHECK(adc_oneshot_read(HANDLE, CHANNEL, &value));
+        ESP_ERROR_CHECK(
+            adc_oneshot_read(Esp32AdcUnit[unit].handle(), CHANNEL, &value));
         return value;
     }
 };
@@ -206,7 +237,6 @@ public:
         static const gpio_num_t PIN = (gpio_num_t)ADC_CHANNEL##_GPIO_NUM;      \
         static const adc_atten_t ATTEN = (adc_atten_t)ATTENUATION;             \
         static const adc_bitwidth_t BITS = (adc_bitwidth_t)BIT_RANGE;          \
-        static adc_oneshot_unit_handle_t HANDLE;                               \
     public:                                                                    \
         static const gpio_num_t pin()                                          \
         {                                                                      \
@@ -217,7 +247,6 @@ public:
             return CHANNEL;                                                    \
         }                                                                      \
     };                                                                         \
-    adc_oneshot_unit_handle_t NAME##Defs::HANDLE;                              \
     typedef Esp32ADCInput<NAME##Defs> NAME##_Pin
 
 #endif // _DRIVERS_ESP32ADCONESHOT_HXX_
