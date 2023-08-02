@@ -153,7 +153,7 @@ private:
 
     Action entry() OVERRIDE
     {
-        LOG_ERROR("response came");
+        LOG(VERBOSE, "response came");
 
         if (!trigger_)
         {
