@@ -51,13 +51,13 @@
 
 // Enable streaming support for the bootloader
 #define BOOTLOADER_STREAM
+
 #ifndef WRITE_BUFFER_SIZE
-// Set the buffer size to half the sector size to minimize the flash writes.
+// Set the buffer size to half of the sector size to minimize the flash writes
 #define WRITE_BUFFER_SIZE (CONFIG_WL_SECTOR_SIZE / 2)
-#endif
+#endif // WRITE_BUFFER_SIZE
 
 #include <driver/twai.h>
-
 #include <esp_app_format.h>
 #include <esp_chip_info.h>
 #include <esp_ota_ops.h>
@@ -75,6 +75,7 @@
 #include <stdint.h>
 
 #include "openlcb/Bootloader.hxx"
+#include "openlcb/Defs.hxx"
 #include "utils/constants.hxx"
 #include "utils/Hub.hxx"
 
@@ -275,7 +276,8 @@ void get_flash_page_info(
 void erase_flash_page(const void *address)
 {
     // NO OP as this is handled automatically as part of esp_ota_write.
-    LOG(BOOTLOADER_LOG_LEVEL, "[Bootloader] Erase: %" PRIu32, (uint32_t)address);
+    LOG(BOOTLOADER_LOG_LEVEL, "[Bootloader] Erase: %" PRIu32,
+        (uint32_t)address);
 }
 
 /// Callback from the bootloader to write to flash.
@@ -404,26 +406,21 @@ void write_flash(const void *address, const void *data, uint32_t size_bytes)
 uint16_t flash_complete(void)
 {
     LOG(INFO, "[Bootloader] Finalizing firmware update");
-    esp_err_t res =
-        ESP_ERROR_CHECK_WITHOUT_ABORT(esp_ota_end(esp_bl_state.ota_handle));
-    if (res == ESP_OK)
-    {
-        LOG(INFO,
-            "[Bootloader] Firmware appears valid, updating the next boot "
-            "partition to %s.", esp_bl_state.target->label);
-        res =
-            ESP_ERROR_CHECK_WITHOUT_ABORT(
-                esp_ota_set_boot_partition(esp_bl_state.target));
-        if (res != ESP_OK)
-        {
-            LOG_ERROR("[Bootloader] Failed to update the boot partition!");
-            return openlcb::Defs::ERROR_FIRMWARE_CSUM;
-        }
-    }
-    else
+    esp_err_t res = esp_ota_end(esp_bl_state.ota_handle);
+    if (res != ESP_OK)
     {
         LOG_ERROR("[Bootloader] Firmware update failed: %s (%04x), aborting!",
-                  esp_err_to_name(res), res);
+            esp_err_to_name(res), res);
+        return openlcb::Defs::ERROR_FIRMWARE_CSUM;        
+    }
+    LOG(INFO,
+        "[Bootloader] Firmware appears valid, updating the next boot "
+        "partition to %s.", esp_bl_state.target->label);
+    res = esp_ota_set_boot_partition(esp_bl_state.target);
+    if (res != ESP_OK)
+    {
+        LOG_ERROR("[Bootloader] Failed to update the boot partition %s (%04x)!",
+            esp_err_to_name(res), res);
         return openlcb::Defs::ERROR_FIRMWARE_CSUM;
     }
     return openlcb::Defs::ERROR_CODE_OK;
