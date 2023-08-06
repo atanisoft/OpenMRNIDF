@@ -43,6 +43,7 @@
 #include "sdkconfig.h"
 #include "utils/format_utils.hxx"
 #include "utils/logging.h"
+#include "utils/StringPrintf.hxx"
 
 #include <algorithm>
 
@@ -235,7 +236,7 @@ void Esp32HardwareI2C::scan(const i2c_port_t port)
     {
         if (addr % 16 == 0)
         {
-            scanresults += StringPrintf("\n02x: ", addr);
+            scanresults.append(StringPrintf("\n02x: ", addr));
         }
         i2c_cmd_handle_t cmd = i2c_cmd_link_create();
         i2c_master_start(cmd);
@@ -245,15 +246,15 @@ void Esp32HardwareI2C::scan(const i2c_port_t port)
         i2c_cmd_link_delete(cmd);
         if (ret == ESP_OK)
         {
-            scanresults += StringPrintf("%02x ", addr);
+            scanresults.append(StringPrintf("%02x ", addr));
         }
         else if (ret == ESP_ERR_TIMEOUT)
         {
-            scanresults += "?? ";
+            scanresults.append("?? ");
         }
         else
         {
-            scanresults += "-- ";
+            scanresults.append("-- ");
         }
     }
     LOG(INFO, scanresults.c_str());
