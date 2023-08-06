@@ -174,6 +174,9 @@ private:
     /// Timeout to use for I2C operations, default is one second.
     static constexpr TickType_t I2C_OP_TIMEOUT = pdMS_TO_TICKS(1000);
 
+    /// Timeout to use for I2C device scanning, default is 50 milliseconds.
+    static constexpr TickType_t I2C_SCAN_TIMEOUT = pdMS_TO_TICKS(50);
+
     /// ISR flags to use for I2C, this defaults to allowing usage of a shared
     /// interupt.
     static constexpr int I2C_ISR_FLAGS = ESP_INTR_FLAG_SHARED;
