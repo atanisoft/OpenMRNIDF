@@ -233,7 +233,7 @@ static inline void twai_purge_rx_queue()
     Notifiable* n = nullptr;
     {
         AtomicHolder h(&twai.buf_lock);
-        LOG(VERBOSE, "ESP-TWAI: puring RX-Q:%zu", twai.rx_buf->pending());
+        LOG(VERBOSE, "ESP-TWAI: purging RX-Q:%zu", twai.rx_buf->pending());
         twai.stats.rx_missed += twai.rx_buf->pending();
         twai.rx_buf->flush();
         std::swap(n, twai.readable_notify);
@@ -259,7 +259,7 @@ static inline void twai_purge_tx_queue()
     Notifiable* n = nullptr;
     {
         AtomicHolder h(&twai.buf_lock);
-        LOG(VERBOSE, "ESP-TWAI: puring TX-Q:%zu", twai.tx_buf->pending());
+        LOG(VERBOSE, "ESP-TWAI: purging TX-Q:%zu", twai.tx_buf->pending());
         twai.stats.tx_failed += twai.tx_buf->pending();
         twai.tx_buf->flush();
         std::swap(n, twai.writable_notify);
@@ -747,7 +747,7 @@ static void twai_isr(void *arg)
             esp_vfs_select_triggered_isr(twai.select_sem, &wakeup);
         }
 #endif // CONFIG_VFS_SUPPORT_SELECT
-        // std::swap is not ISR safe so it is not used here.
+        // std::swap is not guaranteed to be in IRAM, so it is not used here.
         if (twai.readable_notify)
         {
             twai.readable_notify->notify_from_isr();
@@ -766,7 +766,7 @@ static void twai_isr(void *arg)
             esp_vfs_select_triggered_isr(twai.select_sem, &wakeup);
         }
 #endif // CONFIG_VFS_SUPPORT_SELECT
-        // std::swap is not ISR safe so it is not used here.
+        // std::swap is not guaranteed to be in IRAM, so it is not used here.
         if (twai.writable_notify)
         {
             twai.writable_notify->notify_from_isr();

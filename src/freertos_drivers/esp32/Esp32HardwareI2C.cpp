@@ -43,6 +43,7 @@
 #include "sdkconfig.h"
 #include "utils/format_utils.hxx"
 #include "utils/logging.h"
+#include "utils/StringPrintf.hxx"
 
 #include <algorithm>
 
@@ -227,33 +228,33 @@ void Esp32HardwareI2C::scan(const i2c_port_t port)
     // Scan the I2C bus and dump the output of devices that respond
     std::string scanresults =
         "     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n"
-        "00:         ";
+        "00: ";
     scanresults.reserve(256);
 
     HASSERT(i2cInitialized_[port]);
-    for (uint8_t addr = 3; addr < 0x78; addr++)
+    for (uint8_t addr = 0; addr < 0x7F; addr++)
     {
         if (addr % 16 == 0)
         {
-            scanresults += "\n" + int64_to_string_hex(addr) + ":";
+            scanresults.append(StringPrintf("\n%02x: ", addr));
         }
         i2c_cmd_handle_t cmd = i2c_cmd_link_create();
         i2c_master_start(cmd);
         i2c_master_write_byte(cmd, (addr << 1) | I2C_MASTER_WRITE, true);
         i2c_master_stop(cmd);
-        esp_err_t ret = i2c_master_cmd_begin(port, cmd, I2C_OP_TIMEOUT);
+        esp_err_t ret = i2c_master_cmd_begin(port, cmd, I2C_SCAN_TIMEOUT);
         i2c_cmd_link_delete(cmd);
         if (ret == ESP_OK)
         {
-            scanresults += int64_to_string_hex(addr);
+            scanresults.append(StringPrintf("%02x ", addr));
         }
         else if (ret == ESP_ERR_TIMEOUT)
         {
-            scanresults += " ??";
+            scanresults.append("?? ");
         }
         else
         {
-            scanresults += " --";
+            scanresults.append("-- ");
         }
     }
     LOG(INFO, scanresults.c_str());
