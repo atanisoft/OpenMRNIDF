@@ -236,7 +236,7 @@ void Esp32HardwareI2C::scan(const i2c_port_t port)
     {
         if (addr % 16 == 0)
         {
-            scanresults.append(StringPrintf("\n02x: ", addr));
+            scanresults.append(StringPrintf("\n%02x: ", addr));
         }
         i2c_cmd_handle_t cmd = i2c_cmd_link_create();
         i2c_master_start(cmd);
