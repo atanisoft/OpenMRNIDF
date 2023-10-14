@@ -95,7 +95,7 @@ constexpr UBaseType_t OPENMRN_TASK_PRIORITY = ESP_TASK_TCPIP_PRIO - 1;
 // dynamic CDI.xml generation support
 #define HAVE_FILESYSTEM
 
-#endif // ESP32
+#endif // ESP_PLATFORM
 
 #ifdef ARDUINO_ARCH_STM32
 
@@ -374,10 +374,10 @@ public:
     {
         for (auto *e : loopMembers_)
         {
-#if defined(ESP32) && CONFIG_TASK_WDT
+#if defined(ESP_PLATFORM) && CONFIG_TASK_WDT
             // Feed the watchdog so it doesn't reset the ESP32
             esp_task_wdt_reset();
-#endif // ESP32 && CONFIG_TASK_WDT
+#endif // ESP_PLATFORM && CONFIG_TASK_WDT
             e->run();
         }
     }
@@ -396,7 +396,7 @@ public:
     /// Note: this method will not return until the @ref Executor has shutdown.
     void loop_executor()
     {
-#if defined(ESP32) && CONFIG_TASK_WDT
+#if defined(ESP_PLATFORM) && CONFIG_TASK_WDT
         uint32_t current_core = xPortGetCoreID();
         TaskHandle_t idleTask = xTaskGetIdleTaskHandleForCPU(current_core);
         // check if watchdog is enabled and print a warning if it is
@@ -404,7 +404,7 @@ public:
         {
             LOG(WARNING, "WDT detected as enabled on core %d!", current_core);
         }
-#endif // ESP32 && CONFIG_TASK_WDT
+#endif // ESP_PLATFORM && CONFIG_TASK_WDT
         haveExecutorThread_ = true;
 
         // donate this thread to the executor
@@ -418,7 +418,7 @@ public:
     void start_executor_thread()
     {
         haveExecutorThread_ = true;
-#ifdef ESP32
+#ifdef ESP_PLATFORM
 #if CONFIG_TASK_WDT_CHECK_IDLE_TASK_CPU0
         // Remove IDLE0 task watchdog, because the openmrn task sometimes
         // uses 100% cpu and it is pinned to CPU 0.
@@ -431,10 +431,10 @@ public:
                               , OPENMRN_TASK_PRIORITY // priority
                               , nullptr               // task handle
                               , PRO_CPU_NUM);         // cpu core
-#else // NOT ESP32
+#else // NOT ESP_PLATFORM
         stack_->executor()->start_thread(
             "OpenMRN", 0 /* default priority */, 0 /* default stack size */);
-#endif // ESP32
+#endif // ESP_PLATFORM
     }
 #endif // OPENMRN_FEATURE_SINGLE_THREADED
 

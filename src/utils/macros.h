@@ -89,7 +89,7 @@ extern const char* g_death_file;
 
 #define DIE(MSG) abort()
 
-#elif defined(ESP32)
+#elif defined(ESP_PLATFORM)
 
 #include <stdio.h>
 #include <assert.h>
@@ -248,7 +248,7 @@ extern const char* g_death_file;
 /// Macro to signal a function that the result must be used.
 #define MUST_USE_RESULT __attribute__((__warn_unused_result__))
 
-#ifdef ESP32
+#ifdef ESP_PLATFORM
 /// Workaround for broken header in endian.h for the ESP32
 #include <endian.h>
 #ifndef __bswap64
