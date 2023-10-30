@@ -41,6 +41,7 @@
 #include "utils/Uninitialized.hxx"
 
 #include <driver/ledc.h>
+#include <pthread.h>
 
 namespace openmrn_arduino
 {

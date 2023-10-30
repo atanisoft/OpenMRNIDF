@@ -23,6 +23,7 @@ set(IDF_DEPS
     espcoredump
     hal
     heap
+    pthread
     vfs)
 
 idf_component_register(SRC_DIRS "${SOURCE_DIRS}"
