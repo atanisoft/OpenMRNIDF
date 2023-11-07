@@ -112,7 +112,7 @@ public:
     {
         // Ensure the pin count is valid and within range of usable channels.
         HASSERT(pins_.size() > 0 &&
-                pins_.size() < (LEDC_CHANNEL_MAX - first_channel));
+                pins_.size() <= (LEDC_CHANNEL_MAX - first_channel));
         memset(&timerConfig_, 0, sizeof(ledc_timer_config_t));
         // timerConfig_.speed_mode will be assigned the SOC default mode, which
         // is either HIGH speed or LOW speed depending on the hardware support.
