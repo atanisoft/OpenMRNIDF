@@ -278,6 +278,7 @@ private:
     {
         ESP_ERROR_CHECK(
             ledc_set_duty(timerConfig_.speed_mode, channel, counts));
+        ESP_ERROR_CHECK(ledc_update_duty(timerConfig_.speed_mode, channel));
     }
 
     /// Gets the duty cycle.
