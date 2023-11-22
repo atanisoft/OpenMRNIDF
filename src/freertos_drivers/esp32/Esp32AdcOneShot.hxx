@@ -131,6 +131,9 @@ public:
         adc_cali_curve_fitting_config_t config =
         {
             .unit_id = unit,
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,1,2)
+            .chan = CHANNEL,
+#endif
             .atten = ATTEN,
             .bitwidth = BITS
         };
