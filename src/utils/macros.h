@@ -93,19 +93,7 @@ extern const char* g_death_file;
 
 #include <stdio.h>
 #include <assert.h>
-
-// Locate the relevant version of ets_sys.h based on the IDF_TARGET
-#if defined(CONFIG_IDF_TARGET_ESP32)
-#include <esp32/rom/ets_sys.h>
-#elif defined(CONFIG_IDF_TARGET_ESP32S2)
-#include <esp32s2/rom/ets_sys.h>
-#elif defined(CONFIG_IDF_TARGET_ESP32S3)
-#include <esp32s3/rom/ets_sys.h>
-#elif defined(CONFIG_IDF_TARGET_ESP32C3)
-#include <esp32c3/rom/ets_sys.h>
-#else
-#error Unknown/Unsupported ESP32 variant.
-#endif // CONFIG_IDF_TARGET_ESP32
+#include <rom/ets_sys.h>
 
 // For the ESP32 we are using ets_printf() instead of printf() to avoid the
 // internal locking within the newlib implementation. This locking can cause
