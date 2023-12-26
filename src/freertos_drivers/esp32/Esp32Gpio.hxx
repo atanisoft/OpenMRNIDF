@@ -84,7 +84,7 @@ public:
     static_assert(!(PIN_NUM >= 26 && PIN_NUM <= 32)
                 , "Pin is reserved for flash usage.");
 #if defined(CONFIG_SPIRAM_MODE_OCT) || defined(CONFIG_ESPTOOLPY_OCT_FLASH)
-    static_assert(!(PIN_NUM >= 33 && PIN_NUM <= 37)),
+    static_assert(!(PIN_NUM >= 33 && PIN_NUM <= 37),
                   "Pin is not available when Octal SPI mode is enabled.");
 #endif // ESP32S3 with Octal SPI
 #elif CONFIG_IDF_TARGET_ESP32S2
