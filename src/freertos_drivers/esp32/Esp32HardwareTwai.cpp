@@ -650,13 +650,13 @@ static inline uint32_t twai_rx_frames()
             else
             {
                 twai.stats.rx_missed++;
-                ESP_EARLY_LOGE(TWAI_LOG_TAG, "rx-missed:%zu",
+                ESP_EARLY_LOGV(TWAI_LOG_TAG, "rx-missed:%zu",
                                twai.stats.rx_missed);
             }
         }
         else
         {
-            ESP_EARLY_LOGE(TWAI_LOG_TAG, "rx-overrun");
+            ESP_EARLY_LOGV(TWAI_LOG_TAG, "rx-overrun");
 // If the SOC does not support automatic clearing of the RX FIFO we need to
 // handle it here and break out of the loop.
 #ifndef SOC_TWAI_SUPPORTS_RX_STATUS
