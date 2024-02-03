@@ -824,6 +824,7 @@ void* twai_watchdog(void* param)
     LOG(INFO, "ESP-TWAI: Starting TWAI watchdog and reporting task");
     size_t last_rx_pending = 0;
     size_t last_tx_pending = 0;
+    size_t last_tx_success = 0;
     uint32_t last_twai_state = 0;
 
     while (twai.active)
@@ -861,14 +862,17 @@ void* twai_watchdog(void* param)
         }
         last_rx_pending = twai.rx_buf->pending();
 
-        // If the TX queue has not changed since our last check, purge the RX
+        // If the TX queue has not changed since our last check and the TX
+        // success count has not changed since our last check, purge the TX
         // queue and track it as failed frames.
-        if (last_tx_pending && last_tx_pending == twai.tx_buf->pending())
+        if (last_tx_pending && last_tx_pending == twai.tx_buf->pending() &&
+            last_tx_success && last_tx_success == twai.stats.tx_success)
         {
             LOG_ERROR("ESP-TWAI: TX-Q appears stuck, purging TX-Q!");
             twai_purge_tx_queue();
         }
         last_tx_pending = twai.tx_buf->pending();
+        last_tx_success = twai.stats.tx_success;
 
         if (twai.report_stats)
         {
