@@ -299,11 +299,26 @@ protected:
         {
             return;
         }
-        event->event_write_helper<1>()->WriteAsync(node_,
-            Defs::MTI_CONSUMER_IDENTIFIED_RANGE, WriteHelper::global(),
-            eventid_to_buffer(EncodeRange(
-                TractionDefs::EXT_DCC_ACCESSORY_EVENT_BASE, NUM_EVENT - 1)),
-            done->new_child());
+        if (registry_entry.event ==
+            TractionDefs::ACTIVATE_BASIC_DCC_ACCESSORY_EVENT_BASE)
+        {
+            event->event_write_helper<1>()->WriteAsync(node_,
+                Defs::MTI_CONSUMER_IDENTIFIED_RANGE, WriteHelper::global(),
+                eventid_to_buffer(EncodeRange(
+                    TractionDefs::ACTIVATE_BASIC_DCC_ACCESSORY_EVENT_BASE,
+                    4095)),
+                done->new_child());
+        }
+        if (registry_entry.event ==
+            TractionDefs::INACTIVATE_BASIC_DCC_ACCESSORY_EVENT_BASE)
+        {
+            event->event_write_helper<2>()->WriteAsync(node_,
+                Defs::MTI_CONSUMER_IDENTIFIED_RANGE, WriteHelper::global(),
+                eventid_to_buffer(EncodeRange(
+                    TractionDefs::INACTIVATE_BASIC_DCC_ACCESSORY_EVENT_BASE,
+                    4095)),
+                done->new_child());
+        }
     }
 
     void handle_event_report(const EventRegistryEntry &registry_entry,
