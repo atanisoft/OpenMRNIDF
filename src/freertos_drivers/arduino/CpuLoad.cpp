@@ -39,9 +39,9 @@
 #include "os/os.h"
 #include "freertos_includes.h"
 
-#ifdef ESP32
+#ifdef ESP_PLATFORM
 #include "sdkconfig.h"
-#endif // ESP32
+#endif // ESP_PLATFORM
 
 extern "C"
 {
@@ -123,7 +123,7 @@ void cpuload_tick(unsigned irq)
         return;
 // On the ESP32 it is necessary to use a slightly different approach for
 // recording CPU usage metrics since there may be additional CPU cores.
-#ifdef ESP32
+#ifdef ESP_PLATFORM
     if (irq != 0)
     {
         Singleton<CpuLoad>::instance()->record_value(true, (uintptr_t)irq);
@@ -146,7 +146,7 @@ void cpuload_tick(unsigned irq)
     bool is_idle = xTaskGetIdleTaskHandleForCPU(APP_CPU_NUM) == hdl;
     Singleton<CpuLoad>::instance()->record_value(!is_idle, (uintptr_t)hdl);
 #endif // CONFIG_FREERTOS_UNICORE
-#else // NOT ESP32
+#else // NOT ESP_PLATFORM
     if (irq != 0)
     {
         Singleton<CpuLoad>::instance()->record_value(true, (uintptr_t)irq);
@@ -155,7 +155,7 @@ void cpuload_tick(unsigned irq)
     auto hdl = xTaskGetCurrentTaskHandle();
     bool is_idle = xTaskGetIdleTaskHandle() == hdl;
     Singleton<CpuLoad>::instance()->record_value(!is_idle, (uintptr_t)hdl);
-#endif // ESP32
+#endif // ESP_PLATFORM
 }
 } // extern "C"
 

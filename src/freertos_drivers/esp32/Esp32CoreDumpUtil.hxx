@@ -64,10 +64,14 @@ public:
   /// @return true if a core dump is available, false otherwise.
   static bool is_present()
   {
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH && CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF
     esp_log_level_set("esp_core_dump_flash", ESP_LOG_NONE);
     esp_err_t res = esp_core_dump_image_check();
     esp_log_level_set("esp_core_dump_flash", ESP_LOG_WARN);
     return res == ESP_OK;
+#else // ! ESP_COREDUMP_ENABLE_TO_FLASH && ESP_COREDUMP_DATA_FORMAT_ELF
+    return false;
+#endif
   }
 
   /// Utility method that displays a core dump (if present).
@@ -76,6 +80,7 @@ public:
   /// filesystem.
   static void display(const char *output_path = nullptr)
   {
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH && CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF
     if (is_present())
     {
       esp_core_dump_summary_t details;
@@ -83,21 +88,22 @@ public:
       {
         // Convert the core dump to a text file
         string core_dump_summary =
-            StringPrintf("Task:%s (%d) crashed at PC %08x\n",
+            StringPrintf("Task:%s (%" PRIu32 ") crashed at PC %08" PRIx32 "\n",
                          details.exc_task, details.exc_tcb, details.exc_pc);
         core_dump_summary += StringPrintf("Registers:\n");
         for (size_t idx = 0; idx < 16; idx += 4)
         {
           core_dump_summary +=
               StringPrintf(
-                  "A%02zu: 0x%08x A%02zu: 0x%08x A%02zu: 0x%08x A%02zu: 0x%08x\n",
+                  "A%02zu: 0x%08" PRIx32 " A%02zu: 0x%08" PRIx32
+                  " A%02zu: 0x%08" PRIx32 " A%02zu: 0x%08" PRIx32 "\n",
                   idx, details.ex_info.exc_a[idx],
                   idx + 1, details.ex_info.exc_a[idx + 1],
                   idx + 2, details.ex_info.exc_a[idx + 2],
                   idx + 3, details.ex_info.exc_a[idx + 3]);
         }
         core_dump_summary +=
-            StringPrintf("EXCCAUSE: %08x EXCVADDR: %08x\n",
+            StringPrintf("EXCCAUSE: %08" PRIx32 " EXCVADDR: %08" PRIx32 "\n",
                          details.ex_info.exc_cause, details.ex_info.exc_vaddr);
         if (details.ex_info.epcx_reg_bits)
         {
@@ -107,7 +113,8 @@ public:
             if (details.ex_info.epcx_reg_bits & BIT(idx))
             {
               core_dump_summary +=
-                  StringPrintf("%zu:%08x ", idx, details.ex_info.epcx[idx]);
+                  StringPrintf("%zu:%08" PRIx32 " ", idx,
+                    details.ex_info.epcx[idx]);
             }
           }
           core_dump_summary += "\n";
@@ -116,7 +123,7 @@ public:
         for (size_t idx = 0; idx < details.exc_bt_info.depth; idx++)
         {
           core_dump_summary +=
-              StringPrintf(" 0x%08x", details.exc_bt_info.bt[idx]);
+              StringPrintf(" 0x%08" PRIx32, details.exc_bt_info.bt[idx]);
           if (details.exc_bt_info.corrupted)
           {
             core_dump_summary += "(corrupted)";
@@ -130,15 +137,18 @@ public:
         }
       }
     }
+#endif // ESP_COREDUMP_ENABLE_TO_FLASH && ESP_COREDUMP_DATA_FORMAT_ELF
   }
 
   /// Utility method to cleanup a core dump.
   static void cleanup()
   {
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH && CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF
     if (is_present())
     {
       ESP_ERROR_CHECK_WITHOUT_ABORT(esp_core_dump_image_erase());
     }
+#endif // ESP_COREDUMP_ENABLE_TO_FLASH && ESP_COREDUMP_DATA_FORMAT_ELF
   }
 };
 
