@@ -39,6 +39,7 @@
 #include <Arduino.h>
 
 #include "CDIXMLGenerator.hxx"
+#include "executor/Notifiable.hxx"
 #include "freertos_drivers/arduino/Can.hxx"
 #include "freertos_drivers/arduino/WifiDefs.hxx"
 #include "openlcb/SimpleStack.hxx"
@@ -47,9 +48,8 @@
 #include "utils/logging.h"
 #include "utils/Uninitialized.hxx"
 
-#if defined(ESP32)
+#if defined(ESP_PLATFORM)
 
-#include <esp_idf_version.h>
 #include <esp_task.h>
 #include <esp_task_wdt.h>
 
@@ -68,8 +68,6 @@ constexpr UBaseType_t OPENMRN_TASK_PRIORITY = ESP_TASK_TCPIP_PRIO - 1;
 
 #include "freertos_drivers/esp32/Esp32Gpio.hxx"
 #include "freertos_drivers/esp32/Esp32SocInfo.hxx"
-
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
 
 // If we are using ESP-IDF v4.3 (or later) enable the Esp32Ledc API.
 #include "freertos_drivers/esp32/Esp32Ledc.hxx"
@@ -91,15 +89,6 @@ constexpr UBaseType_t OPENMRN_TASK_PRIORITY = ESP_TASK_TCPIP_PRIO - 1;
 
 #endif // NOT ESP32-H2 and NOT ESP32-C2
 
-#endif // IDF v4.3+
-
-#if defined(CONFIG_IDF_TARGET_ESP32)
-// Note: This code is deprecated in favor of the TWAI interface which exposes
-// both select() and fnctl() interfaces. Support for this may be removed in the
-// future.
-#include "freertos_drivers/esp32/Esp32HardwareCanAdapter.hxx"
-#endif // ESP32 only
-
 #include "freertos_drivers/esp32/Esp32HardwareSerialAdapter.hxx"
 #include "freertos_drivers/esp32/Esp32WiFiManager.hxx"
 
@@ -107,7 +96,7 @@ constexpr UBaseType_t OPENMRN_TASK_PRIORITY = ESP_TASK_TCPIP_PRIO - 1;
 // dynamic CDI.xml generation support
 #define HAVE_FILESYSTEM
 
-#endif // ESP32
+#endif // ESP_PLATFORM
 
 #ifdef ARDUINO_ARCH_STM32
 
@@ -178,14 +167,26 @@ private:
     /// Handles data coming in from the serial port and sends it to OpenMRN.
     void loop_for_read()
     {
+        if (!bn_.is_done())
+        {
+            // Blocked because data we've just read has not yet been processed.
+            return;
+        }
         int av = port_->available();
         if (av <= 0)
         {
             return;
         }
+        // We don't read too many bytes into one buffer. 64 is exactly one USB
+        // packet's length.
+        if (av > 64)
+        {
+            av = 64;
+        }
         auto *b = txtHub_.alloc();
         b->data()->skipMember_ = &writePort_;
         b->data()->resize(av);
+        b->set_done(bn_.reset(EmptyNotifiable::DefaultInstance()));
         port_->readBytes((char*)b->data()->data(), b->data()->size());
         txtHub_.send(b);
     }
@@ -247,6 +248,14 @@ private:
     size_t writeOfs_;
     /// Hub for the textual data.
     HubFlow txtHub_{service_};
+    /// This notifiable will know whether the txt packet we read from the
+    /// serial has been processed by the hub. This is a pushback mechanism for
+    /// us not to run out of memory when there is too many packets coming from
+    /// the host or socket.
+    ///
+    /// This notifiable is active while there is a message in flight to the txt
+    /// hub.
+    BarrierNotifiable bn_;
 };
 
 /// Bridge class that connects a native CAN controller to the OpenMRN core
@@ -386,10 +395,10 @@ public:
     {
         for (auto *e : loopMembers_)
         {
-#if defined(ESP32) && CONFIG_TASK_WDT
+#if defined(ESP_PLATFORM) && CONFIG_TASK_WDT
             // Feed the watchdog so it doesn't reset the ESP32
             esp_task_wdt_reset();
-#endif // ESP32 && CONFIG_TASK_WDT
+#endif // ESP_PLATFORM && CONFIG_TASK_WDT
             e->run();
         }
     }
@@ -408,7 +417,7 @@ public:
     /// Note: this method will not return until the @ref Executor has shutdown.
     void loop_executor()
     {
-#if defined(ESP32) && CONFIG_TASK_WDT
+#if defined(ESP_PLATFORM) && CONFIG_TASK_WDT
         uint32_t current_core = xPortGetCoreID();
         TaskHandle_t idleTask = xTaskGetIdleTaskHandleForCPU(current_core);
         // check if watchdog is enabled and print a warning if it is
@@ -416,7 +425,7 @@ public:
         {
             LOG(WARNING, "WDT detected as enabled on core %d!", current_core);
         }
-#endif // ESP32 && CONFIG_TASK_WDT
+#endif // ESP_PLATFORM && CONFIG_TASK_WDT
         haveExecutorThread_ = true;
 
         // donate this thread to the executor
@@ -430,7 +439,7 @@ public:
     void start_executor_thread()
     {
         haveExecutorThread_ = true;
-#ifdef ESP32
+#ifdef ESP_PLATFORM
 #if CONFIG_TASK_WDT_CHECK_IDLE_TASK_CPU0
         // Remove IDLE0 task watchdog, because the openmrn task sometimes
         // uses 100% cpu and it is pinned to CPU 0.
@@ -443,10 +452,10 @@ public:
                               , OPENMRN_TASK_PRIORITY // priority
                               , nullptr               // task handle
                               , PRO_CPU_NUM);         // cpu core
-#else // NOT ESP32
+#else // NOT ESP_PLATFORM
         stack_->executor()->start_thread(
             "OpenMRN", 0 /* default priority */, 0 /* default stack size */);
-#endif // ESP32
+#endif // ESP_PLATFORM
     }
 #endif // OPENMRN_FEATURE_SINGLE_THREADED
 

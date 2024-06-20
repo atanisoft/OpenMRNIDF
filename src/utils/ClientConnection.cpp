@@ -1,5 +1,5 @@
 /** \copyright
- * Copyright (c) 2021, Mike Dunston
+ * Copyright (c) 2023, Balazs Racz
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,24 +24,32 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * \file Esp32Ledc.cxx
+ * \file ClientConnection.cxx
  *
- * ESP-IDF LEDC adapter that exposes a PWM interface.
+ * Utilities for managing can-hub connections as a client application.
  *
- * @author Mike Dunston
- * @date 1 June 2021
+ * @author Balazs Racz
+ * @date 27 Dec 2023
  */
 
-// Ensure we only compile this code for the ESP32 family of MCUs.
-#if defined(ESP_PLATFORM)
+#include "utils/ClientConnection.hxx"
 
-#include "Esp32Ledc.hxx"
+#include "netinet/in.h"
+#include "netinet/tcp.h"
+#include "nmranet_config.h"
 
-namespace openmrn_arduino
+#include "utils/FdUtils.hxx"
+
+/// Callback from try_connect to donate the file descriptor.
+/// @param fd is the file destriptor of the connection freshly opened.
+void GCFdConnectionClient::connection_complete(int fd)
 {
+    const bool use_select =
+        (config_gridconnect_tcp_use_select() == CONSTANT_TRUE);
 
-pthread_once_t Esp32Ledc::ledcFadeOnce_ = PTHREAD_ONCE_INIT;
-
-} // namespace openmrn_arduino
-
-#endif // ESP_PLATFORM
+    // Applies kernel parameters like socket options.
+    FdUtils::optimize_fd(fd);
+    
+    fd_ = fd;
+    create_gc_port_for_can_hub(hub_, fd, &closedNotify_, use_select);
+}
