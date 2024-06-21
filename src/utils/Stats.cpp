@@ -1,5 +1,5 @@
-/** @copyright
- * Copyright (c) 2018, Stuart W. Baker
+/** \copyright
+ * Copyright (c) 2023, Balazs Racz
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,46 +24,20 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * @file BroadcastTime.cxx
+ * \file Stats.hxx
  *
- * Implementation of a Broadcast Time Protocol Interface.
+ * Utility class for collecting statistics.
  *
- * @author Stuart W. Baker
- * @date 4 November 2018
+ * @author Balazs Racz
+ * @date 28 Dec 2023
  */
 
-#ifndef _POSIX_C_SOURCE
-#define _POSIX_C_SOURCE 200112L
-#endif
+#include "utils/Stats.hxx"
 
-#include "openlcb/BroadcastTime.hxx"
+#include "utils/StringPrintf.hxx"
 
-namespace openlcb
+std::string Stats::debug_string()
 {
-
-//
-// BroadcastTimeClient::clear_timezone
-//
-void BroadcastTime::clear_timezone()
-{
-#ifndef ESP_PLATFORM
-    setenv("TZ", "GMT0", 1);
-    tzset();
-#endif
+    return StringPrintf("%.1f msec +- %.1f, max %.1f\n", favg() / 1000,
+        stddev() / 1000, ((FloatType)max_) / 1000);
 }
-
-//
-// BroadcastTimeClient::set_data_year_str
-//
-void BroadcastTime::set_date_year_str(const char *date_year)
-{
-    int year, month, day;
-    if (BroadcastTimeDefs::string_to_date(date_year, &year, &month, &day))
-    {
-        // date valid
-        set_date(month, day);
-        set_year(year);
-    }
-}
-
-} // namespace openlcb

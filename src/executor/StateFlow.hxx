@@ -355,9 +355,6 @@ protected:
         Pool *p = pool;
         if (!p)
         {
-            // GCC reports: warning: 'this' pointer is null [-Wnonnull] for
-            // target_flow, adding the HASSERT prevents the warning and null
-            // dereference.
             HASSERT(target_flow != nullptr);
             p = target_flow->pool();
         }

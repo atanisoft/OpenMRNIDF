@@ -37,6 +37,13 @@
 #ifndef _INCLUDE_OPENMRN_FEATURES_
 #define _INCLUDE_OPENMRN_FEATURES_
 
+#ifdef ESP_PLATFORM
+#include <esp_idf_version.h>
+#else
+#define ESP_IDF_VERSION 0
+#define ESP_IDF_VERSION_VAL(a,b,c) 1
+#endif // ESP_PLATFORM
+
 #ifdef __FreeRTOS__
 /// Compiles the FreeRTOS event group based ::select() implementation.
 #define OPENMRN_FEATURE_DEVICE_SELECT 1

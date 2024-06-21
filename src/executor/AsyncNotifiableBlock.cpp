@@ -1,5 +1,5 @@
-/** @copyright
- * Copyright (c) 2018, Stuart W. Baker
+/** \copyright
+ * Copyright (c) 2020, Balazs Racz
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,46 +24,45 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * @file BroadcastTime.cxx
+ * \file AsyncNotifiableBlock.cxx
  *
- * Implementation of a Broadcast Time Protocol Interface.
+ * An advanced notifiable construct that acts as a fixed pool of
+ * BarrierNotifiables. A stateflow can pend on acquiring one of them, use that
+ * barrier, with it automatically returning to the next caller when the Barrier
+ * goes out of counts.
  *
- * @author Stuart W. Baker
- * @date 4 November 2018
+ * @author Balazs Racz
+ * @date 18 Feb 2020
  */
 
-#ifndef _POSIX_C_SOURCE
-#define _POSIX_C_SOURCE 200112L
+#ifndef _DEFAULT_SOURCE
+#define _DEFAULT_SOURCE
 #endif
 
-#include "openlcb/BroadcastTime.hxx"
+#include "AsyncNotifiableBlock.hxx"
 
-namespace openlcb
-{
+#include "os/sleep.h"
 
-//
-// BroadcastTimeClient::clear_timezone
-//
-void BroadcastTime::clear_timezone()
+AsyncNotifiableBlock::~AsyncNotifiableBlock()
 {
-#ifndef ESP_PLATFORM
-    setenv("TZ", "GMT0", 1);
-    tzset();
-#endif
-}
-
-//
-// BroadcastTimeClient::set_data_year_str
-//
-void BroadcastTime::set_date_year_str(const char *date_year)
-{
-    int year, month, day;
-    if (BroadcastTimeDefs::string_to_date(date_year, &year, &month, &day))
+    // Recollects all notifiable instances, including waiting as long as needed
+    // if there are some that have not finished yet.
+    for (unsigned i = 0; i < count_; ++i)
     {
-        // date valid
-        set_date(month, day);
-        set_year(year);
+        while (true)
+        {
+            QMember *m = next().item;
+            if (!m)
+            {
+                LOG(VERBOSE,
+                    "shutdown async notifiable block: waiting for returns");
+                microsleep(100);
+            }
+            else
+            {
+                HASSERT(initialize(m)->abort_if_almost_done());
+                break;
+            }
+        }
     }
 }
-
-} // namespace openlcb

@@ -154,7 +154,7 @@ struct SelectBufferInfo<Buffer<CanHubData>> {
 
 /// @return the number of packets to limit read input if we are throttling.
 int hubdevice_incoming_packet_limit();
-
+    
 /// State flow implementing select-aware fd reads.
 template <class HFlow> class HubDeviceSelectReadFlow : public StateFlowBase
 {
@@ -187,7 +187,8 @@ public:
         }
     }
 
-    /// Unregisters the current flow from the hub.
+    /// Unregisters the current flow from the hub. Must be called on the main
+    /// executor.
     void shutdown()
     {
         auto *e = this->service()->executor();
