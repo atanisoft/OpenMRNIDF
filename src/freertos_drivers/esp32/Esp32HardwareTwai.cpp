@@ -260,7 +260,7 @@ static inline void twai_purge_tx_queue()
     {
         AtomicHolder h(&twai.buf_lock);
         LOG(VERBOSE, "ESP-TWAI: purging TX-Q:%zu", twai.tx_buf->pending());
-        twai.stats.tx_failed += twai.tx_buf->pending();
+        twai.stats.tx_lost += twai.tx_buf->pending();
         twai.tx_buf->flush();
         std::swap(n, twai.writable_notify);
     }
@@ -307,6 +307,20 @@ static ssize_t twai_vfs_write(int fd, const void *buf, size_t size)
         {
             LOG_ERROR("ESP-TWAI: TWAI driver is not running, unable to write "
                       "%zu frames.", size);
+            bus_error = true;
+            break;
+        }
+        else if (is_twai_err_passive())
+        {
+            // When the TWAI driver is in an error passive state it is not
+            // possible to transmit additional frames, purge the TX queue and
+            // track remaining frames as failed.
+            //
+            // NOTE: we are tracking pending remaining frames as written to
+            // ensure the stack does not unnecessarily become blocked.
+
+            sent += size;
+            twai.stats.tx_lost += size;
             bus_error = true;
             break;
         }
@@ -783,7 +797,9 @@ static void twai_isr(void *arg)
     }
 
     // Bus error detected
-    if (events & TWAI_HAL_EVENT_BUS_ERR)
+    // NOTE: this will be raised even after entering error-passive state and
+    // should be excluded from the bus_error increment accordingly.
+    if (events & TWAI_HAL_EVENT_BUS_ERR && !is_twai_err_passive())
     {
         twai.stats.bus_error++;
         ESP_EARLY_LOGV(TWAI_LOG_TAG, "bus-error:%zu", twai.stats.bus_error);
@@ -879,14 +895,14 @@ void* twai_watchdog(void* param)
             LOG(INFO,
                 "ESP-TWAI: "
                 "RX:%zu (pending:%zu,overrun:%zu,discard:%zu,miss:%zu,lost:%zu) "
-                "TX:%zu (pending:%zu,suc:%zu,fail:%zu) "
+                "TX:%zu (pending:%zu,suc:%zu,fail:%zu,lost:%zu) "
                 "Bus (arb-loss:%zu,err:%zu,state:%s)",
                 twai.stats.rx_processed, twai.rx_buf->pending(),
                 twai.stats.rx_overrun, twai.stats.rx_discard,
                 twai.stats.rx_missed, twai.stats.rx_lost,
                 twai.stats.tx_processed, twai.tx_buf->pending(),
                 twai.stats.tx_success, twai.stats.tx_failed,
-                twai.stats.arb_loss, twai.stats.bus_error,
+                twai.stats.tx_lost, twai.stats.arb_loss, twai.stats.bus_error,
                 is_twai_running() ? "Running" :
                 is_twai_recovering() ? "Recovering" :
                 is_twai_err_warn() ? "Err-Warn" :

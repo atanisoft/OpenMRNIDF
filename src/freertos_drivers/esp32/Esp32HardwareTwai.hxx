@@ -81,6 +81,10 @@ typedef struct
     /// by the low-level TWAI driver.
     size_t tx_failed;
 
+    /// Number of frames that were lost due to the low-level TWAI driver being
+    /// in an error-passive state or the tx queue was purged.
+    size_t tx_lost;
+
     /// Number of arbitration losses that have been observed on the TWAI bus.
     size_t arb_loss;
 
