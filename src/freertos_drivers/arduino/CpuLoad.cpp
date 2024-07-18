@@ -41,6 +41,7 @@
 
 #ifdef ESP_PLATFORM
 #include "sdkconfig.h"
+#include <esp_idf_version.h>
 #endif // ESP_PLATFORM
 
 extern "C"
@@ -117,6 +118,16 @@ uint8_t CpuLoad::get_load() {
     return (avg_ * 100) >> SHIFT_ONE;
 }
 
+#ifdef ESP_PLATFORM
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,3,0)
+#define FREERTOS_GET_CURRENT_TASK_HANDLE_FOR_CORE(core) xTaskGetCurrentTaskHandleForCore(core)
+#define FREERTOS_GET_IDLE_TASK_HANDLE_FOR_CORE(core) xTaskGetIdleTaskHandleForCore(core)
+#else
+#define FREERTOS_GET_CURRENT_TASK_HANDLE_FOR_CORE(core) xTaskGetCurrentTaskHandleForCPU(core)
+#define FREERTOS_GET_IDLE_TASK_HANDLE_FOR_CORE(core) xTaskGetIdleTaskHandleForCPU(core)
+#endif
+#endif // ESP_PLATFORM
+
 void cpuload_tick(unsigned irq)
 {
     if (!Singleton<CpuLoad>::exists())
@@ -132,20 +143,20 @@ void cpuload_tick(unsigned irq)
     {
         // Record the first CPU core (PRO_CPU). NOTE: This assumes that OpenMRN
         // is running on this core.
-        auto hdl = xTaskGetCurrentTaskHandleForCPU(PRO_CPU_NUM);
-        bool is_idle = xTaskGetIdleTaskHandleForCPU(PRO_CPU_NUM) == hdl;
+        auto hdl = FREERTOS_GET_CURRENT_TASK_HANDLE_FOR_CORE(PRO_CPU_NUM);
+        bool is_idle = FREERTOS_GET_IDLE_TASK_HANDLE_FOR_CORE(PRO_CPU_NUM) == hdl;
         Singleton<CpuLoad>::instance()->record_value(!is_idle, (uintptr_t)hdl);
     }
 // NOTE: The ESP32-S2 and ESP32-C3 are single-core SoC and defines the
 // FREERTOS_UNICORE flag which we can use here to disable recording of the
 // APP_CPU.
-#ifndef CONFIG_FREERTOS_UNICORE
+#if !defined(CONFIG_FREERTOS_UNICORE) || CONFIG_FREERTOS_NUMBER_OF_CORES > 1
     // Record the second CPU core (APP_CPU). NOTE: this is where application
     // code typically runs.
-    auto hdl = xTaskGetCurrentTaskHandleForCPU(APP_CPU_NUM);
-    bool is_idle = xTaskGetIdleTaskHandleForCPU(APP_CPU_NUM) == hdl;
+    auto hdl = FREERTOS_GET_CURRENT_TASK_HANDLE_FOR_CORE(APP_CPU_NUM);
+    bool is_idle = FREERTOS_GET_IDLE_TASK_HANDLE_FOR_CORE(APP_CPU_NUM) == hdl;
     Singleton<CpuLoad>::instance()->record_value(!is_idle, (uintptr_t)hdl);
-#endif // CONFIG_FREERTOS_UNICORE
+#endif // !CONFIG_FREERTOS_UNICORE || CONFIG_FREERTOS_NUMBER_OF_CORES > 1
 #else // NOT ESP_PLATFORM
     if (irq != 0)
     {
