@@ -434,7 +434,7 @@ static int twai_vfs_open(const char *path, int flags, int mode)
     path++;
     twai.non_blocking = (flags & O_NONBLOCK);
 
-    LOG(INFO, "ESP-TWAI: Starting TWAI driver on:%s mode:%x (%s) fd:%d",
+    LOG(VERBOSE, "ESP-TWAI: Starting TWAI driver on:%s mode:%x (%s) fd:%d",
         path, mode, twai.non_blocking ? "non-blocking" : "blocking", 
         TWAI_VFS_FD);
     twai_purge_rx_queue();
@@ -837,7 +837,7 @@ static void twai_isr(void *arg)
 /// a general failure in communicating with the CAN transceiver IC.
 void* twai_watchdog(void* param)
 {
-    LOG(INFO, "ESP-TWAI: Starting TWAI watchdog and reporting task");
+    LOG(VERBOSE, "ESP-TWAI: Starting TWAI watchdog and reporting task");
     size_t last_rx_pending = 0;
     size_t last_tx_pending = 0;
     size_t last_tx_success = 0;
@@ -979,7 +979,7 @@ static void esp32_twai_isr_init(void *param)
 
 void Esp32HardwareTwai::hw_init()
 {
-    LOG(INFO,
+    LOG(VERBOSE,
         "ESP-TWAI: Configuring TWAI (TX:%d, RX:%d, EXT-CLK:%d, BUS-CTRL:%d)",
         txPin_, rxPin_, extClockPin_, busStatusPin_);
     gpio_set_pull_mode((gpio_num_t)txPin_, GPIO_FLOATING);
