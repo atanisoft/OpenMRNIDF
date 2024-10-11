@@ -37,6 +37,7 @@ idf_component_register(SRC_DIRS "${SOURCE_DIRS}"
 target_compile_options(${COMPONENT_LIB} PUBLIC $<$<COMPILE_LANGUAGE:CXX>:-Wno-volatile>)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-type-limits)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-ignored-qualifiers)
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-strict-aliasing)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-missing-field-initializers)
 target_compile_options(${COMPONENT_LIB} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wno-class-memaccess>)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-implicit-fallthrough)
