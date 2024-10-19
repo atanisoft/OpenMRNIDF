@@ -262,13 +262,28 @@ void Packet::add_dcc_prog_command(
     add_dcc_checksum();
 }
 
-void Packet::add_dcc_pom_read1(unsigned cv_number)
+void Packet::add_dcc_pom_read_byte(unsigned cv_number)
 {
-    add_dcc_prog_command(DCC_PROG_READ1, cv_number, 0);
+    add_dcc_prog_command(DCC_PROG_READ_BYTE, cv_number, 0);
 }
 
-void Packet::add_dcc_pom_write1(unsigned cv_number, uint8_t value) {
-    add_dcc_prog_command(DCC_PROG_WRITE1, cv_number, value);
+void Packet::add_dcc_pom_write_byte(unsigned cv_number, uint8_t value)
+{
+    add_dcc_prog_command(DCC_PROG_WRITE_BYTE, cv_number, value);
+}
+
+void Packet::add_dcc_pom_write_bit(unsigned cv_number, uint8_t bit, bool on)
+{
+    uint8_t value = DCC_PROG_BITVAL_WRITE | on ? 0x08 : 0x00 | bit & 0x07;
+    add_dcc_prog_command(DCC_PROG_WRITE_BIT, cv_number, value);
+}
+
+void Packet::add_dcc_pom_addr_write(uint16_t address)
+{
+    payload[dlc++] = Defs::DCC_PROG_LONG_ADDR;
+    payload[dlc++] = address >> 8;
+    payload[dlc++] = address & 0xFF;
+    add_dcc_checksum();
 }
 
 void Packet::set_dcc_svc_verify_byte(unsigned cv_number, uint8_t value)

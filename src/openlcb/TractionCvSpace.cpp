@@ -279,16 +279,17 @@ StateFlowBase::Action TractionCvSpace::pgm_verify_exit()
     return async_done();
 }
 
-StateFlowBase::Action TractionCvSpace::try_read1()
+StateFlowBase::Action TractionCvSpace::try_read1_byte)
 {
-    return allocate_and_call(track_, STATE(fill_read1_packet));
-}
-StateFlowBase::Action TractionCvSpace::try_write1()
-{
-    return allocate_and_call(track_, STATE(fill_write1_packet));
+    return allocate_and_call(track_, STATE(fill_read_byte_packet));
 }
 
-StateFlowBase::Action TractionCvSpace::fill_read1_packet()
+StateFlowBase::Action TractionCvSpace::try_write_byte()
+{
+    return allocate_and_call(track_, STATE(fill_write_byte_packet));
+}
+
+StateFlowBase::Action TractionCvSpace::fill_read_byte_packet()
 {
     auto *b = get_allocation_result(track_);
     b->data()->start_dcc_packet();
@@ -300,7 +301,7 @@ StateFlowBase::Action TractionCvSpace::fill_read1_packet()
     {
         b->data()->add_dcc_address(dcc::DccShortAddress(dccAddressNum_));
     }
-    b->data()->add_dcc_pom_read1(cvNumber_);
+    b->data()->add_dcc_pom_read_byte(cvNumber_);
     b->data()->feedback_key = reinterpret_cast<uintptr_t>(this);
     // We proactively repeat read packets twice.
     b->data()->packet_header.rept_count = 1;

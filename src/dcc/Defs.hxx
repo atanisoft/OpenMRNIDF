@@ -96,9 +96,20 @@ enum
     DCC_BINARY_LONG = 0b11000000,
     DCC_ANALOG_FN = 0b00111101,
 
-    DCC_PROG_READ1 = 0b11100100,
-    DCC_PROG_WRITE1 = 0b11101100,
+    /// Verify / Read the value for a single CV via POM.
+    DCC_PROG_READ_BYTE = 0b11100100,
+    /// Write a single CV byte via POM.
+    DCC_PROG_WRITE_BYTE = 0b11101100,
+    /// Writes a single bit of a single CV via POM.
+    DCC_PROG_WRITE_BIT = 0b11101000,
+    /// reserved.
     DCC_PROG_READ4 = 0b11100000,
+
+    DCC_PROG_BITVAL_WRITE = 0b11110000,
+    DCC_PROG_BITVAL_VERIFY = 0b11100000,
+
+    /// Writes to CV17, CV18 and CV29 (not implemented) via POM.
+    DCC_PROG_LONG_ADDR = 0b11110100,
 
     DCC_SVC_BIT_MANIPULATE = 0b01111000,
     DCC_SVC_WRITE = 0b01111100,

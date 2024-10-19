@@ -225,13 +225,25 @@ struct Packet : public DCCPacket
 
     /** Adds a DCC POM read single CV command and the xor byte. This should be
      * called after add_dcc_address. @param cv_number which CV to read. */
-    void add_dcc_pom_read1(unsigned cv_number);
+    void add_dcc_pom_read_byte(unsigned cv_number);
 
     /** Adds a DCC POM write single CV command and the xor byte. This should be
      * called after add_dcc_address.
      * @param cv_number which CV to write - 1,
      * @param value is the value to set it to. */
-    void add_dcc_pom_write1(unsigned cv_number, uint8_t value);
+    void add_dcc_pom_write_byte(unsigned cv_number, uint8_t value);
+
+    /** Adds a DCC POM write bit CV command and the xor byte. This should be
+     * called after add_dcc_address.
+     * @param cv_number which CV to write - 1,
+     * @param bit which to write,
+     * @param on true if the bit should be set, false if it should be clear. */
+    void add_dcc_pom_write_bit(unsigned cv_number, uint8_t bit, bool on);
+
+    /** Adds a DCC POM write long address CV command and the xor byte. This
+     * should be called after add_dcc_address.
+     * @param address which should be sent to the locomotive. */
+    void add_dcc_pom_addr_write(uint16_t address);
 
     /** Sets the packet to a DCC service mode packet verifying the contents of
      * an entire CV. This function does not need a DCC address. (Includes the

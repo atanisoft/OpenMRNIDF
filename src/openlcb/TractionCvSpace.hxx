@@ -95,12 +95,12 @@ private:
                 Notifiable *again) OVERRIDE;
 
     // State flow states.
-    Action try_read1();
-    Action fill_read1_packet();
+    Action try_read_byte();
+    Action fill_read_byte_packet();
     Action read_returned();
 
-    Action try_write1();
-    Action fill_write1_packet();
+    Action try_write_byte();
+    Action fill_write_byte_packet();
     Action write_returned();
 
     Action pgm_verify();
