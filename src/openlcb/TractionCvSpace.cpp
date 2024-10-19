@@ -181,7 +181,7 @@ size_t TractionCvSpace::read(const address_t source, uint8_t *dst, size_t len,
     numTry_ = 0;
     if ((source == OFFSET_CV_VALUE) || (source <= MAX_CV))
     {
-        start_flow(STATE(try_read1));
+        start_flow(STATE(try_read_byte));
     }
     else if (source == OFFSET_CV_VERIFY_RESULT)
     {
@@ -279,7 +279,7 @@ StateFlowBase::Action TractionCvSpace::pgm_verify_exit()
     return async_done();
 }
 
-StateFlowBase::Action TractionCvSpace::try_read1_byte)
+StateFlowBase::Action TractionCvSpace::try_read_byte()
 {
     return allocate_and_call(track_, STATE(fill_read_byte_packet));
 }
@@ -328,13 +328,13 @@ StateFlowBase::Action TractionCvSpace::read_returned()
             break;
         }
         numTry_++;
-        return call_immediately(STATE(try_read1));
+        return call_immediately(STATE(try_read_byte));
     case _ERROR_BUSY:
         if (os_get_time_monotonic() > deadline_) {
             errorCode_ = _ERROR_TIMEOUT;
             break;
         }
-        return call_immediately(STATE(try_read1));
+        return call_immediately(STATE(try_read_byte));
     }
     return async_done();
 }
@@ -388,13 +388,13 @@ size_t TractionCvSpace::write(address_t destination, const uint8_t *src,
     cvData_ = *src;
     numTry_ = 0;
     errorCode_ = ERROR_NOOP;
-    start_flow(STATE(try_write1));
+    start_flow(STATE(try_write_byte));
     *error = ERROR_AGAIN;
     deadline_ = os_get_time_monotonic() + MSEC_TO_NSEC(RAILCOM_POM_OP_TIMEOUT_MSEC);
     return 0;
 }
 
-StateFlowBase::Action TractionCvSpace::fill_write1_packet()
+StateFlowBase::Action TractionCvSpace::fill_write_byte_packet()
 {
     auto *b = get_allocation_result(track_);
     b->data()->start_dcc_packet();
@@ -406,7 +406,7 @@ StateFlowBase::Action TractionCvSpace::fill_write1_packet()
     {
         b->data()->add_dcc_address(dcc::DccShortAddress(dccAddressNum_));
     }
-    b->data()->add_dcc_pom_write1(cvNumber_, cvData_);
+    b->data()->add_dcc_pom_write_byte(cvNumber_, cvData_);
     b->data()->feedback_key = reinterpret_cast<uintptr_t>(this);
     // POM write packets need to appear at least twice on non-back-to-back
     // packets by the standard. We make 4 back to back packets and that
@@ -435,10 +435,10 @@ StateFlowBase::Action TractionCvSpace::write_returned()
             {
                 // We switch from writing to reading if we had tried many enough
                 // times. Maybe the write was actually successful.
-                return call_immediately(STATE(try_read1));
+                return call_immediately(STATE(try_read_byte));
             }
             numTry_++;
-            return call_immediately(STATE(try_write1));
+            return call_immediately(STATE(try_write_byte));
         case _ERROR_BUSY:
             if (os_get_time_monotonic() > deadline_)
             {
@@ -446,7 +446,7 @@ StateFlowBase::Action TractionCvSpace::write_returned()
                 break;
             }
             /// @todo(balazs.racz) keep a timestamp to not keep trying forever.
-            return call_immediately(STATE(try_write1));
+            return call_immediately(STATE(try_write_byte));
     }
     return async_done();
 }
