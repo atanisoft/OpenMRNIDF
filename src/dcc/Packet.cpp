@@ -274,7 +274,7 @@ void Packet::add_dcc_pom_write_byte(unsigned cv_number, uint8_t value)
 
 void Packet::add_dcc_pom_write_bit(unsigned cv_number, uint8_t bit, bool on)
 {
-    uint8_t value = DCC_PROG_BITVAL_WRITE | on ? 0x08 : 0x00 | bit & 0x07;
+    uint8_t value = DCC_PROG_BITVAL_WRITE | on ? 0x08 : 0x00 | (bit & 0x07);
     add_dcc_prog_command(DCC_PROG_WRITE_BIT, cv_number, value);
 }
 
