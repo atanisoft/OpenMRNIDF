@@ -129,10 +129,12 @@ protected:
         {
             *p = this->link_;
         }
+#if 0
         else
         {
             HASSERT(0);
         }
+#endif
     }
 
     /// Linked list pointer.

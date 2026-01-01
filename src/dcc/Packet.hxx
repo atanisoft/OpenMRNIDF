@@ -116,6 +116,13 @@ struct Packet : public DCCPacket
     /// Adds the header to the packet needed for addressing a DCC
     /// locomotive. @param address is the DCC (long) address.
     void add_dcc_address(DccLongAddress address);
+    /// Adds the header to the packet needed for addressing a DCC
+    /// accessory (e.g. for POM).
+    /// @param is_basic true for basic accessory, false for extended accessory
+    /// @param address the 11-bit accessory address, 0..2047. This is NOT the
+    /// user-visible address (that one is rotated by 3). For basic accessories
+    /// this is addressing an output number.
+    void add_dcc_accy_address(bool is_basic, unsigned address);
 
     /** Adds a speed-and-direction command (dcc baseline command) ot the
      * packet. Speed is maximum 14. This should be called after
@@ -218,13 +225,25 @@ struct Packet : public DCCPacket
 
     /** Adds a DCC POM read single CV command and the xor byte. This should be
      * called after add_dcc_address. @param cv_number which CV to read. */
-    void add_dcc_pom_read1(unsigned cv_number);
+    void add_dcc_pom_read_byte(unsigned cv_number);
 
     /** Adds a DCC POM write single CV command and the xor byte. This should be
      * called after add_dcc_address.
      * @param cv_number which CV to write - 1,
      * @param value is the value to set it to. */
-    void add_dcc_pom_write1(unsigned cv_number, uint8_t value);
+    void add_dcc_pom_write_byte(unsigned cv_number, uint8_t value);
+
+    /** Adds a DCC POM write bit CV command and the xor byte. This should be
+     * called after add_dcc_address.
+     * @param cv_number which CV to write - 1,
+     * @param bit which to write,
+     * @param on true if the bit should be set, false if it should be clear. */
+    void add_dcc_pom_write_bit(unsigned cv_number, uint8_t bit, bool on);
+
+    /** Adds a DCC POM write long address CV command and the xor byte. This
+     * should be called after add_dcc_address.
+     * @param address which should be sent to the locomotive. */
+    void add_dcc_pom_addr_write(uint16_t address);
 
     /** Sets the packet to a DCC service mode packet verifying the contents of
      * an entire CV. This function does not need a DCC address. (Includes the
@@ -298,6 +317,23 @@ struct Packet : public DCCPacket
      */
     void add_dcc_basic_accessory(unsigned address, bool is_activate);
 
+    /// Call this function after setting a basic accy address to set the
+    /// accessory packet options.
+    /// @param is_normal true for normal, false for reverse
+    /// @param is_activate true for activate, false for deactivate
+    void set_dcc_basic_accy_params(bool is_normal, bool is_activate);
+
+    /// Adds a DCC extended accessory decoder command packet and the checksum
+    /// byte.
+    /// @param address is the 11-bit binary address, 0..2047. No bits have to be
+    /// inverted. This will be A10..A0 on the track. (To convert from a user
+    /// address, see accy_address_user_to_binary in dcc::Defs.)
+    /// @param aspect is the argument byte to the extended
+    /// accessory. Traditionally this was used as an aspect for a signal
+    /// decoder, but different accessories might have different interpretation
+    /// of it.
+    void add_dcc_ext_accessory(unsigned address, uint8_t aspect);
+    
     /// Sets the packet to a logon enable packet.
     /// @param param defines which decoders should be requested to logon.
     /// @param cid the command station unique ID hashed.

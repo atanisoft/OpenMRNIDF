@@ -136,7 +136,7 @@ private:
  * an error is encountered on this port and the port is subsequently closed.
  * @param use_select when true, the FD will be used with select, when false,
  * separate threads will be started with blocking read and write calls. */
-void create_gc_port_for_can_hub(CanHubFlow *can_hub, int fd,
+Notifiable *create_gc_port_for_can_hub(CanHubFlow *can_hub, int fd,
     Notifiable *on_exit = nullptr, bool use_select = false);
 
 #endif //_UTILS_GRIDCONNECTHUB_HXX_

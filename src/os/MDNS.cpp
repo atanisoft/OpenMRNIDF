@@ -34,10 +34,19 @@
 
 #include "os/MDNS.hxx"
 
+#if ESP_PLATFORM
+#include "sdkconfig.h"
+
+// On the ESP platforms, when the IDF_TARGET is set to linux it will mimic a
+// native linux build but using IDF APIs for most of the platform. In this case
+// we are forcing the IDF_TARGET of linux to *NOT* use the default linux
+// behavior due to dependencies.
+#endif
+
 /** Turn on/off debug print statements */
 #define MDNS_DEBUG 0
 
-#if !defined (__linux__)
+#if !defined (__linux__) || CONFIG_IDF_TARGET_LINUX
 void mdns_publish(const char *name, const char *service, uint16_t port) __attribute__ ((weak));
 void mdns_unpublish(const char *name, const char *service) __attribute__ ((weak));
 int mdns_lookup(const char *service, struct addrinfo *hints,
@@ -96,7 +105,7 @@ void mdns_scan(const char *service)
  */
 void MDNS::publish(const char *name, const char *service, uint16_t port)
 {
-#if defined (__linux__)
+#if defined (__linux__) && !CONFIG_IDF_TARGET_LINUX
     name = avahi_strdup(name);
 
     if (!group_)
@@ -136,7 +145,7 @@ void MDNS::publish(const char *name, const char *service, uint16_t port)
  */
 void MDNS::unpublish(const char *name, const char *service)
 {
-#if defined(__linux__)
+#if defined(__linux__) && !CONFIG_IDF_TARGET_LINUX
     DIE("unimplemented");
 #else
     mdns_unpublish(name, service);
@@ -149,7 +158,7 @@ void MDNS::unpublish(const char *name, const char *service)
 int MDNS::lookup(const char *service, struct addrinfo *hints,
                  struct addrinfo **addr)
 {
-#if defined (__linux__)
+#if defined (__linux__) && !CONFIG_IDF_TARGET_LINUX
     LookupUserdata lu(hints);
     AvahiServiceBrowser *sb = nullptr;
     int error;
@@ -242,13 +251,13 @@ fail:
  */
 void MDNS::scan(const char *service)
 {
-#if defined (__linux__)
+#if defined (__linux__) && !CONFIG_IDF_TARGET_LINUX
 #else
     mdns_scan(service);
 #endif
 }
 
-#if defined (__linux__)
+#if defined (__linux__) && !CONFIG_IDF_TARGET_LINUX
 /*
  * MDNS::resolve_callback()
  */
@@ -281,7 +290,7 @@ void MDNS::resolve_callback(AvahiServiceResolver *r,
             struct sockaddr *sa;
 
             ai = (struct addrinfo*)malloc(sizeof(struct addrinfo));
-            sa = (struct sockaddr*)malloc(sizeof(struct sockaddr));
+            sa = (struct sockaddr*)malloc(std::max(sizeof(struct sockaddr_in), sizeof(struct sockaddr_in6)));
 
             memset(ai, 0, sizeof(struct addrinfo));
             memset(sa, 0, sizeof(struct sockaddr));

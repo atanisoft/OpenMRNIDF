@@ -37,12 +37,11 @@
 
 // Ensure we only compile this code for the ESP32 family of MCUs and that the
 // ESP-IDF version is supported for this code.
-#if defined(ESP32)
+#if defined(ESP_PLATFORM)
 
 #include "sdkconfig.h"
-#include <esp_idf_version.h>
 
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(4,3,0)
+#if !CONFIG_IDF_TARGET_LINUX
 
 #if CONFIG_VFS_SUPPORT_TERMIOS
 // remove defines added by arduino-esp32 core/esp32/binary.h which are
@@ -53,26 +52,31 @@
 
 #include <assert.h>
 #include <driver/gpio.h>
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,0,0)
+#include <esp_idf_version.h>
+
+#include <esp_clk_tree.h>
 #include <esp_private/periph_ctrl.h>
-#else // IDF v4.x (or earlier)
-#include <driver/periph_ctrl.h>
-#endif // IDF v5+
+#ifndef CONFIG_FREERTOS_UNICORE
 #include <esp_ipc.h>
+#endif
 #include <esp_log.h>
 #include <esp_rom_gpio.h>
 #include <esp_intr_alloc.h>
 #include <esp_task.h>
 #include <esp_vfs.h>
 #include <fcntl.h>
-#include <hal/twai_types.h>
 #include <hal/twai_hal.h>
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,5,0)
+#include <hal/twai_ll.h>
+#endif
+#include <hal/twai_types.h>
 #include <soc/gpio_sig_map.h>
+#include <stdint.h>
 
 #include "can_frame.h"
 #include "can_ioctl.h"
 #include "executor/Notifiable.hxx"
-#include "freertos_drivers/arduino/DeviceBuffer.hxx"
+#include "freertos_drivers/common/DeviceBuffer.hxx"
 #include "freertos_drivers/esp32/Esp32HardwareTwai.hxx"
 #include "utils/Atomic.hxx"
 #include "utils/logging.h"
@@ -89,14 +93,18 @@ static constexpr int TWAI_VFS_FD = 0;
 static constexpr BaseType_t WATCHDOG_TASK_PRIORITY = ESP_TASK_TCPIP_PRIO - 1;
 
 /// Stack size (bytes) to use for the ESP32 TWAI status reporting task.
-static constexpr BaseType_t WATCHDOG_TASK_STACK = 2048;
+static constexpr BaseType_t WATCHDOG_TASK_STACK = 2548;
 
 /// Interval at which to print the ESP32 TWAI bus status.
 static constexpr TickType_t STATUS_PRINT_INTERVAL = pdMS_TO_TICKS(10000);
 
+// This is only used with v5.4 or earlier, it was moved to internal as part of
+// v5.5 HAL.
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5,5,0)
 /// TWAI default interrupt enable mask, excludes data overrun (bit[3]) and
 /// brp_div (bit[4]) since these are not supported on all models.
 static constexpr uint32_t TWAI_DEFAULT_INTERRUPTS = 0xE7;
+#endif //IDF v5.4 or earlier
 
 /// TWAI Driver ISR flags.
 /// Defaults to level 1-3 (C/C++ compatible) and suspend when accessing flash.
@@ -227,6 +235,136 @@ static inline bool is_twai_tx_occupied()
     return twai_hal_check_state_flags(&twai.context, TWAI_HAL_STATE_FLAG_TX_BUFF_OCCUPIED);
 }
 
+/// Helper function that will return true if TWAI TX was successful, false otherwise.
+static inline bool was_last_tx_successful()
+{
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5,5,0)
+    return twai_hal_check_last_tx_successful(&twai.context);
+#else
+    return twai_ll_get_status(twai.context.dev) & TWAI_LL_STATUS_TCS;
+#endif
+}
+
+/// Helper function to start the TWAI HAL layer when it was previously stopped.
+static inline void twai_restart()
+{
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5,5,0)
+    twai_hal_start(&twai.context, TWAI_MODE_NORMAL);
+#else
+    twai_hal_start(&twai.context);
+#endif
+}
+
+/// Utility method for transmitting a single frame to the TWAI hardware.
+///
+/// @param can_frame Raw frame to be transmitted.
+static inline void transmit_frame(struct can_frame *can_frame)
+{
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,5,0)
+    twai_hal_frame_t hal_frame;
+    twai_frame_header_t header =
+    {
+        .id = can_frame->can_id,
+        .dlc = can_frame->can_dlc,
+        .ide = IS_CAN_FRAME_EFF(*can_frame),
+        .rtr = IS_CAN_FRAME_RTR(*can_frame),
+    };
+    twai_hal_trans_desc_t hal_trans =
+    {
+        .frame =
+        {
+            .header = &header,
+            .buffer = can_frame->data,
+            .buffer_len = can_frame->can_dlc,
+        },
+        .config =
+        {
+            .retry_cnt = 0,
+            .loopback = 0,
+        }
+    };
+    twai_hal_format_frame(&hal_trans, &hal_frame);
+    twai_hal_set_tx_buffer_and_transmit(&twai.context, &hal_frame, 0);
+#else
+    twai_message_t tx_frame;
+    twai_hal_frame_t hal_frame;
+    memset(&tx_frame, 0, sizeof(twai_message_t));
+    tx_frame.identifier = can_frame->can_id;
+    tx_frame.extd = IS_CAN_FRAME_EFF(*can_frame);
+    tx_frame.rtr =  IS_CAN_FRAME_RTR(*can_frame);
+    tx_frame.data_length_code = can_frame->can_dlc;
+    memcpy(tx_frame.data, can_frame->data, can_frame->can_dlc);
+    twai_hal_format_frame(&tx_frame, &hal_frame);
+
+    twai_hal_set_tx_buffer_and_transmit(&twai.context, &hal_frame);
+#endif
+}
+
+/// Utility method for receiving a single frame from the TWAI hardware.
+///
+/// @param can_frame Raw frame to be received into.
+/// @param frame HAL frame to be received.
+static inline void receive_frame(
+    struct can_frame *can_frame, twai_hal_frame_t *frame)
+{
+    //Set remaining bytes of data to 0
+    memset(can_frame->data, 0, TWAI_FRAME_MAX_DLC);
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,5,0)
+    twai_frame_header_t header;
+
+    memset(&header, 0, sizeof(twai_frame_header_t));
+    // twai_hal_parse_frame will copy data across from the frame.
+    twai_hal_parse_frame(frame, &header, can_frame->data, TWAI_FRAME_MAX_DLC);
+    can_frame->can_id = header.id;
+    can_frame->can_dlc = header.dlc;
+
+    if (header.ide)
+    {
+        SET_CAN_FRAME_EFF(*can_frame);
+    }
+    else
+    {
+        CLR_CAN_FRAME_EFF(*can_frame);
+    }
+
+    if (header.rtr)
+    {
+        SET_CAN_FRAME_RTR(*can_frame);
+    }
+    else
+    {
+        CLR_CAN_FRAME_RTR(*can_frame);
+    }
+#else
+    twai_message_t rx_frame;
+
+    memset(&rx_frame, 0, sizeof(twai_message_t));
+    twai_hal_parse_frame(frame, &rx_frame);
+    memcpy(can_frame->data, rx_frame.data, TWAI_FRAME_MAX_DLC);
+    can_frame->can_dlc = rx_frame.data_length_code;
+    can_frame->can_id = rx_frame.identifier;
+
+    if (rx_frame.extd)
+    {
+        SET_CAN_FRAME_EFF(*can_frame);
+    }
+    else
+    {
+        CLR_CAN_FRAME_EFF(*can_frame);
+    }
+
+    if (rx_frame.rtr)
+    {
+        SET_CAN_FRAME_RTR(*can_frame);
+    }
+    else
+    {
+        CLR_CAN_FRAME_RTR(*can_frame);
+    }
+#endif
+}
+
 /// Helper function that will purge the TWAI RX queue and wake the OpenMRN
 /// stack if it was waiting for a frame to be ready to receive.
 static inline void twai_purge_rx_queue()
@@ -234,7 +372,7 @@ static inline void twai_purge_rx_queue()
     Notifiable* n = nullptr;
     {
         AtomicHolder h(&twai.buf_lock);
-        LOG(VERBOSE, "ESP-TWAI: puring RX-Q: %d", twai.rx_buf->pending());
+        LOG(VERBOSE, "ESP-TWAI: purging RX-Q:%zu", twai.rx_buf->pending());
         twai.stats.rx_missed += twai.rx_buf->pending();
         twai.rx_buf->flush();
         std::swap(n, twai.readable_notify);
@@ -260,8 +398,8 @@ static inline void twai_purge_tx_queue()
     Notifiable* n = nullptr;
     {
         AtomicHolder h(&twai.buf_lock);
-        LOG(VERBOSE, "ESP-TWAI: puring TX-Q: %d", twai.tx_buf->pending());
-        twai.stats.tx_failed += twai.tx_buf->pending();
+        LOG(VERBOSE, "ESP-TWAI: purging TX-Q:%zu", twai.tx_buf->pending());
+        twai.stats.tx_lost += twai.tx_buf->pending();
         twai.tx_buf->flush();
         std::swap(n, twai.writable_notify);
     }
@@ -288,7 +426,7 @@ static inline void twai_purge_tx_queue()
 /// blocking operation.
 static ssize_t twai_vfs_write(int fd, const void *buf, size_t size)
 {
-    LOG(VERBOSE, "ESP-TWAI: write(%d, %p, %d)", fd, buf, size);
+    LOG(VERBOSE, "ESP-TWAI: write(%d, %p, %zu)", fd, buf, size);
     DASSERT(fd == TWAI_VFS_FD);
     ssize_t sent = 0;
     const struct can_frame *data = (const struct can_frame *)buf;
@@ -307,7 +445,21 @@ static ssize_t twai_vfs_write(int fd, const void *buf, size_t size)
         else if (!is_twai_running())
         {
             LOG_ERROR("ESP-TWAI: TWAI driver is not running, unable to write "
-                      "%d frames.", size);
+                      "%zu frames.", size);
+            bus_error = true;
+            break;
+        }
+        else if (is_twai_err_passive())
+        {
+            // When the TWAI driver is in an error passive state it is not
+            // possible to transmit additional frames, purge the TX queue and
+            // track remaining frames as failed.
+            //
+            // NOTE: we are tracking pending remaining frames as written to
+            // ensure the stack does not unnecessarily become blocked.
+
+            sent += size;
+            twai.stats.tx_lost += size;
             bus_error = true;
             break;
         }
@@ -333,18 +485,9 @@ static ssize_t twai_vfs_write(int fd, const void *buf, size_t size)
             // frame and transmit it here.
             AtomicHolder h(&twai.buf_lock);
             struct can_frame *frame = nullptr;
-            twai_message_t tx_frame;
-            twai_hal_frame_t hal_frame;
             if (twai.tx_buf->data_read_pointer(&frame) && frame != nullptr)
             {
-                memset(&tx_frame, 0, sizeof(twai_message_t));
-                tx_frame.identifier = frame->can_id;
-                tx_frame.extd = IS_CAN_FRAME_EFF(*frame);
-                tx_frame.rtr = IS_CAN_FRAME_RTR(*frame);
-                tx_frame.data_length_code = frame->can_dlc;
-                memcpy(tx_frame.data, frame->data, frame->can_dlc);
-                twai_hal_format_frame(&tx_frame, &hal_frame);
-                twai_hal_set_tx_buffer_and_transmit(&twai.context, &hal_frame);
+                transmit_frame(frame);
             }
         }
         sent += frames_written;
@@ -360,7 +503,7 @@ static ssize_t twai_vfs_write(int fd, const void *buf, size_t size)
     {
         errno = EWOULDBLOCK;
     }
-    LOG(VERBOSE, "ESP-TWAI: write() %d", sent * sizeof(struct can_frame));
+    LOG(VERBOSE, "ESP-TWAI: write() %zu", sent * sizeof(struct can_frame));
     return sent * sizeof(struct can_frame);
 }
 
@@ -373,7 +516,7 @@ static ssize_t twai_vfs_write(int fd, const void *buf, size_t size)
 /// blocking operation.
 static ssize_t twai_vfs_read(int fd, void *buf, size_t size)
 {
-    LOG(VERBOSE, "ESP-TWAI: read(%d, %p, %d)", fd, buf, size);
+    LOG(VERBOSE, "ESP-TWAI: read(%d, %p, %zu)", fd, buf, size);
     DASSERT(fd == TWAI_VFS_FD);
 
     ssize_t received = 0;
@@ -401,7 +544,7 @@ static ssize_t twai_vfs_read(int fd, void *buf, size_t size)
         return -1;
     }
 
-    LOG(VERBOSE, "ESP-TWAI: read() %d", received * sizeof(struct can_frame));
+    LOG(VERBOSE, "ESP-TWAI: read() %zu", received * sizeof(struct can_frame));
     return received * sizeof(struct can_frame);
 }
 
@@ -421,12 +564,12 @@ static int twai_vfs_open(const char *path, int flags, int mode)
     path++;
     twai.non_blocking = (flags & O_NONBLOCK);
 
-    LOG(INFO, "ESP-TWAI: Starting TWAI driver on:%s mode:%x (%s) fd:%d",
+    LOG(VERBOSE, "ESP-TWAI: Starting TWAI driver on:%s mode:%x (%s) fd:%d",
         path, mode, twai.non_blocking ? "non-blocking" : "blocking", 
         TWAI_VFS_FD);
     twai_purge_rx_queue();
     twai_purge_tx_queue();
-    twai_hal_start(&twai.context, TWAI_MODE_NORMAL);
+    twai_restart();
     return TWAI_VFS_FD;
 }
 
@@ -602,6 +745,34 @@ static esp_err_t twai_vfs_end_select(void *end_select_args)
 
 #endif // CONFIG_VFS_SUPPORT_SELECT
 
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,5,0)
+// this was copied from ESP-IDF v5.5.0 deletion tree, this should be replaced
+// in the future through inlining this functionality to the usage place, this
+// can only be done as part of desupporting v5.4.x or earlier.
+static inline bool twai_hal_read_rx_buffer_and_clear(
+    twai_hal_context_t *hal_ctx, twai_hal_frame_t *rx_frame)
+{
+#ifdef SOC_TWAI_SUPPORTS_RX_STATUS
+    if (twai_ll_get_status(hal_ctx->dev) & TWAI_LL_STATUS_MS)
+    {
+        // Release the buffer for this particular overrun frame
+        twai_ll_set_cmd_release_rx_buffer(hal_ctx->dev);
+        return false;
+    }
+#else
+    if (twai_ll_get_status(hal_ctx->dev) & TWAI_LL_STATUS_DOS)
+    {
+        // No need to release RX buffer as we'll be releasing all RX frames in
+        // continuously later
+        return false;
+    }
+#endif
+    twai_ll_get_rx_buffer(hal_ctx->dev, rx_frame);
+    twai_ll_set_cmd_release_rx_buffer(hal_ctx->dev);
+    return true;
+}
+#endif
+
 /// TWAI Interrupt handler for receiving one (or more) TWAI frames.
 static inline uint32_t twai_rx_frames()
 {
@@ -609,7 +780,7 @@ static inline uint32_t twai_rx_frames()
     uint32_t rx_ready_count = twai_hal_get_rx_msg_count(&twai.context);
     struct can_frame *can_frame = nullptr;
     uint32_t rx_count = 0;
-    ESP_EARLY_LOGV(TWAI_LOG_TAG, "rx-ready-count: %d", rx_ready_count);
+    ESP_EARLY_LOGV(TWAI_LOG_TAG, "rx-ready-count: %" PRIu32, rx_ready_count);
     for (uint32_t idx = 0; idx < rx_ready_count; idx++)
     {
         twai_hal_frame_t frame;
@@ -619,45 +790,25 @@ static inline uint32_t twai_rx_frames()
             {
                 // DLC is longer than supported, discard the frame.
                 twai.stats.rx_discard++;
-                ESP_EARLY_LOGE(TWAI_LOG_TAG, "rx-discard:%d",
+                ESP_EARLY_LOGE(TWAI_LOG_TAG, "rx-discard:%zu",
                                twai.stats.rx_discard);
             }
             else if (twai.rx_buf->data_write_pointer(&can_frame))
             {
-                twai_message_t rx_frame;
-                twai_hal_parse_frame(&frame, &rx_frame);
-                memcpy(can_frame->data, rx_frame.data, TWAI_FRAME_MAX_DLC);
-                can_frame->can_dlc = rx_frame.data_length_code;
-                can_frame->can_id = rx_frame.identifier;
-                if (rx_frame.extd)
-                {
-                    SET_CAN_FRAME_EFF(*can_frame);
-                }
-                else
-                {
-                    CLR_CAN_FRAME_EFF(*can_frame);
-                }
-                if (rx_frame.rtr)
-                {
-                    SET_CAN_FRAME_RTR(*can_frame);
-                }
-                else
-                {
-                    CLR_CAN_FRAME_RTR(*can_frame);
-                }
+                receive_frame(can_frame, &frame);
                 rx_count += twai.rx_buf->advance(1);
                 ESP_EARLY_LOGV(TWAI_LOG_TAG, "rx-OK");
             }
             else
             {
                 twai.stats.rx_missed++;
-                ESP_EARLY_LOGE(TWAI_LOG_TAG, "rx-missed:%d",
+                ESP_EARLY_LOGV(TWAI_LOG_TAG, "rx-missed:%zu",
                                twai.stats.rx_missed);
             }
         }
         else
         {
-            ESP_EARLY_LOGE(TWAI_LOG_TAG, "rx-overrun");
+            ESP_EARLY_LOGV(TWAI_LOG_TAG, "rx-overrun");
 // If the SOC does not support automatic clearing of the RX FIFO we need to
 // handle it here and break out of the loop.
 #ifndef SOC_TWAI_SUPPORTS_RX_STATUS
@@ -677,7 +828,8 @@ static inline uint32_t twai_rx_frames()
 static inline uint32_t twai_tx_frame()
 {
     AtomicHolder h(&twai.buf_lock);
-    if (twai_hal_check_last_tx_successful(&twai.context))
+
+    if (was_last_tx_successful())
     {
         ESP_EARLY_LOGV(TWAI_LOG_TAG, "TX-OK");
         twai.stats.tx_success++;
@@ -693,16 +845,7 @@ static inline uint32_t twai_tx_frame()
     struct can_frame *can_frame = nullptr;
     if (twai.tx_buf->data_read_pointer(&can_frame) && can_frame != nullptr)
     {
-        twai_message_t tx_frame;
-        twai_hal_frame_t hal_frame;
-        memset(&tx_frame, 0, sizeof(twai_message_t));
-        tx_frame.identifier = can_frame->can_id;
-        tx_frame.extd = IS_CAN_FRAME_EFF(*can_frame);
-        tx_frame.rtr =  IS_CAN_FRAME_RTR(*can_frame);
-        tx_frame.data_length_code = can_frame->can_dlc;
-        memcpy(tx_frame.data, can_frame->data, can_frame->can_dlc);
-        twai_hal_format_frame(&tx_frame, &hal_frame);
-        twai_hal_set_tx_buffer_and_transmit(&twai.context, &hal_frame);
+        transmit_frame(can_frame);
         return 1;
     }
     return 0;
@@ -715,8 +858,10 @@ static void twai_isr(void *arg)
 {
     BaseType_t wakeup = pdFALSE;
     uint32_t events = twai_hal_get_events(&twai.context);
-    ESP_EARLY_LOGV(TWAI_LOG_TAG, "events: %04x", events);
+    ESP_EARLY_LOGV(TWAI_LOG_TAG, "events:%04x", events);
 
+// These flags are only applicable for the ESP32 target
+#if CONFIG_IDF_TARGET_ESP32
 #if defined(CONFIG_TWAI_ERRATA_FIX_RX_FRAME_INVALID) || \
     defined(CONFIG_TWAI_ERRATA_FIX_RX_FIFO_CORRUPT)
     if (events & TWAI_HAL_EVENT_NEED_PERIPH_RESET)
@@ -736,6 +881,7 @@ static void twai_isr(void *arg)
 #endif // CONFIG_VFS_SUPPORT_SELECT
     }
 #endif // TWAI_ERRATA_FIX_RX_FRAME_INVALID || TWAI_ERRATA_FIX_RX_FIFO_CORRUPT
+#endif // CONFIG_IDF_TARGET_ESP32
 
     // RX completed
     if ((events & TWAI_HAL_EVENT_RX_BUFF_FRAME) && twai_rx_frames())
@@ -748,7 +894,7 @@ static void twai_isr(void *arg)
             esp_vfs_select_triggered_isr(twai.select_sem, &wakeup);
         }
 #endif // CONFIG_VFS_SUPPORT_SELECT
-        // std::swap is not ISR safe so it is not used here.
+        // std::swap is not guaranteed to be in IRAM, so it is not used here.
         if (twai.readable_notify)
         {
             twai.readable_notify->notify_from_isr();
@@ -767,7 +913,7 @@ static void twai_isr(void *arg)
             esp_vfs_select_triggered_isr(twai.select_sem, &wakeup);
         }
 #endif // CONFIG_VFS_SUPPORT_SELECT
-        // std::swap is not ISR safe so it is not used here.
+        // std::swap is not guaranteed to be in IRAM, so it is not used here.
         if (twai.writable_notify)
         {
             twai.writable_notify->notify_from_isr();
@@ -779,22 +925,23 @@ static void twai_isr(void *arg)
     if (events & TWAI_HAL_EVENT_BUS_RECOV_CPLT)
     {
         ESP_EARLY_LOGV(TWAI_LOG_TAG, "bus recovery complete");
-        // start the driver automatically
-        twai_hal_start(&twai.context, TWAI_MODE_NORMAL);
+        twai_restart();
     }
 
     // Bus error detected
-    if (events & TWAI_HAL_EVENT_BUS_ERR)
+    // NOTE: this will be raised even after entering error-passive state and
+    // should be excluded from the bus_error increment accordingly.
+    if (events & TWAI_HAL_EVENT_BUS_ERR && !is_twai_err_passive())
     {
         twai.stats.bus_error++;
-        ESP_EARLY_LOGV(TWAI_LOG_TAG, "bus-error:%d", twai.stats.bus_error);
+        ESP_EARLY_LOGV(TWAI_LOG_TAG, "bus-error:%zu", twai.stats.bus_error);
     }
 
     // Arbitration error detected
     if (events & TWAI_HAL_EVENT_ARB_LOST)
     {
-        twai.stats.arb_error++;
-        ESP_EARLY_LOGV(TWAI_LOG_TAG, "arb-lost:%d", twai.stats.arb_error);
+        twai.stats.arb_loss++;
+        ESP_EARLY_LOGV(TWAI_LOG_TAG, "arb-loss:%zu", twai.stats.arb_loss);
     }
 
     if (wakeup == pdTRUE)
@@ -822,9 +969,10 @@ static void twai_isr(void *arg)
 /// a general failure in communicating with the CAN transceiver IC.
 void* twai_watchdog(void* param)
 {
-    LOG(INFO, "ESP-TWAI: Starting TWAI watchdog and reporting task");
+    LOG(VERBOSE, "ESP-TWAI: Starting TWAI watchdog and reporting task");
     size_t last_rx_pending = 0;
     size_t last_tx_pending = 0;
+    size_t last_tx_success = 0;
     uint32_t last_twai_state = 0;
 
     while (twai.active)
@@ -862,28 +1010,31 @@ void* twai_watchdog(void* param)
         }
         last_rx_pending = twai.rx_buf->pending();
 
-        // If the TX queue has not changed since our last check, purge the RX
+        // If the TX queue has not changed since our last check and the TX
+        // success count has not changed since our last check, purge the TX
         // queue and track it as failed frames.
-        if (last_tx_pending && last_tx_pending == twai.tx_buf->pending())
+        if (last_tx_pending && last_tx_pending == twai.tx_buf->pending() &&
+            last_tx_success && last_tx_success == twai.stats.tx_success)
         {
             LOG_ERROR("ESP-TWAI: TX-Q appears stuck, purging TX-Q!");
             twai_purge_tx_queue();
         }
         last_tx_pending = twai.tx_buf->pending();
+        last_tx_success = twai.stats.tx_success;
 
         if (twai.report_stats)
         {
             LOG(INFO,
                 "ESP-TWAI: "
-                "RX:%d (pending:%zu,overrun:%d,discard:%d,missed:%d,lost:%d) "
-                "TX:%d (pending:%zu,suc:%d,fail:%d) "
-                "Bus (arb-err:%d,err:%d,state:%s)",
+                "RX:%zu (pending:%zu,overrun:%zu,discard:%zu,miss:%zu,lost:%zu) "
+                "TX:%zu (pending:%zu,suc:%zu,fail:%zu,lost:%zu) "
+                "Bus (arb-loss:%zu,err:%zu,state:%s)",
                 twai.stats.rx_processed, twai.rx_buf->pending(),
                 twai.stats.rx_overrun, twai.stats.rx_discard,
                 twai.stats.rx_missed, twai.stats.rx_lost,
                 twai.stats.tx_processed, twai.tx_buf->pending(),
                 twai.stats.tx_success, twai.stats.tx_failed,
-                twai.stats.arb_error, twai.stats.bus_error,
+                twai.stats.tx_lost, twai.stats.arb_loss, twai.stats.bus_error,
                 is_twai_running() ? "Running" :
                 is_twai_recovering() ? "Recovering" :
                 is_twai_err_warn() ? "Err-Warn" :
@@ -958,9 +1109,40 @@ static void esp32_twai_isr_init(void *param)
             nullptr, &twai.isr_handle));
 }
 
+/// VFS functions to call for select() invocations.
+static const esp_vfs_select_ops_t twai_select =
+{
+    .start_select = twai_vfs_start_select,
+    .end_select = twai_vfs_end_select,
+};
+
+/// VFS registration structure, these are invoked for portions of the VFS usage
+/// as part of /dev/wakeup.
+static const esp_vfs_fs_ops_t twai_vfs =
+{
+    .write = twai_vfs_write,
+    .lseek = nullptr,
+    .read = twai_vfs_read,
+    .pread = nullptr,
+    .pwrite = nullptr,
+    .open = twai_vfs_open,
+    .close = twai_vfs_close,
+    .fstat = nullptr,
+    .fcntl = twai_vfs_fcntl,
+    .ioctl = twai_vfs_ioctl,
+    .fsync = nullptr,
+    .dir = nullptr,
+#ifdef CONFIG_VFS_SUPPORT_TERMIOS
+    .termios = nullptr,
+#endif
+#if CONFIG_VFS_SUPPORT_SELECT
+    .select = &twai_select,
+#endif
+};
+
 void Esp32HardwareTwai::hw_init()
 {
-    LOG(INFO,
+    LOG(VERBOSE,
         "ESP-TWAI: Configuring TWAI (TX:%d, RX:%d, EXT-CLK:%d, BUS-CTRL:%d)",
         txPin_, rxPin_, extClockPin_, busStatusPin_);
     gpio_set_pull_mode((gpio_num_t)txPin_, GPIO_FLOATING);
@@ -988,34 +1170,59 @@ void Esp32HardwareTwai::hw_init()
         esp_rom_gpio_pad_select_gpio((gpio_num_t)busStatusPin_);
     }
 
-    esp_vfs_t vfs = {};
-    vfs.write = twai_vfs_write;
-    vfs.read = twai_vfs_read;
-    vfs.open = twai_vfs_open;
-    vfs.close = twai_vfs_close;
-    vfs.fcntl = twai_vfs_fcntl;
-    vfs.ioctl = twai_vfs_ioctl;
-#if CONFIG_VFS_SUPPORT_SELECT
-    vfs.start_select = twai_vfs_start_select;
-    vfs.end_select = twai_vfs_end_select;
-#endif // CONFIG_VFS_SUPPORT_SELECT
-    vfs.flags = ESP_VFS_FLAG_DEFAULT;
-    ESP_ERROR_CHECK(esp_vfs_register(vfsPath_, &vfs, this));
+    ESP_ERROR_CHECK(esp_vfs_register_fs(
+        vfsPath_, &twai_vfs, ESP_VFS_FLAG_STATIC, this));
 
+// These APIs were removed in ESP-IDF v6.0.0+.
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(6,0,0)
     periph_module_reset(PERIPH_TWAI_MODULE);
     periph_module_enable(PERIPH_TWAI_MODULE);
-    HASSERT(twai_hal_init(&twai.context));
+#endif
+
     twai_timing_config_t timingCfg = TWAI_TIMING_CONFIG_125KBITS();
     twai_filter_config_t filterCfg = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+
+    // default clock source if not specified in config.
+    if (timingCfg.clk_src == 0)
+    {
+        timingCfg.clk_src = TWAI_CLK_SRC_DEFAULT;
+    }
+    twai_hal_config_t twai_hal_cfg = 
+    {
+        .controller_id = 0,
+        .clock_source_hz = 0,
+    };
+
+    // retrieve the clock frequency from the SoC
+    esp_clk_tree_src_get_freq_hz((soc_module_clk_t)timingCfg.clk_src,
+        ESP_CLK_TREE_SRC_FREQ_PRECISION_CACHED, &twai_hal_cfg.clock_source_hz);
+
+    // BRP validations
+    uint32_t brp = timingCfg.brp;
+    if (timingCfg.quanta_resolution_hz)
+    {
+        HASSERT(twai_hal_cfg.clock_source_hz % timingCfg.quanta_resolution_hz == 0);
+        brp = twai_hal_cfg.clock_source_hz / timingCfg.quanta_resolution_hz;
+    }
+    HASSERT(twai_ll_check_brp_validation(brp));
+
+    // Initialize the low level HAL APIs
+    HASSERT(twai_hal_init(&twai.context, &twai_hal_cfg));
+
     LOG(VERBOSE, "ESP-TWAI: Initiailizing peripheral");
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5,5,0)
+    twai_hal_configure(&twai.context, &timingCfg, &filterCfg, 0);
+#else
     twai_hal_configure(&twai.context, &timingCfg, &filterCfg,
         TWAI_DEFAULT_INTERRUPTS, 0);
-#if SOC_CPU_CORES_NUM > 1
+#endif
+
+#ifndef CONFIG_FREERTOS_UNICORE
     ESP_ERROR_CHECK(
         esp_ipc_call_blocking(preferredIsrCore_, esp32_twai_isr_init, nullptr));
 #else
     esp32_twai_isr_init(nullptr);
-#endif // SOC_CPU_CORES_NUM > 1
+#endif // CONFIG_FREERTOS_UNICORE
     twai.active = true;
 
     os_thread_create(&twai.wd_thread, "TWAI-WD", WATCHDOG_TASK_PRIORITY,
@@ -1030,6 +1237,5 @@ void Esp32HardwareTwai::get_driver_stats(esp32_twai_stats_t *stats)
 
 } // namespace openmrn_arduino
 
-#endif // IDF v4.3+
-
-#endif // ESP32
+#endif // !CONFIG_IDF_TARGET_LINUX
+#endif // ESP_PLATFORM

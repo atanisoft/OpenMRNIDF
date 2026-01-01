@@ -39,6 +39,9 @@
 #ifndef _DEFAULT_SOURCE
 #define _DEFAULT_SOURCE
 #endif
+#if ESP_PLATFORM
+#include "sdkconfig.h"
+#endif
 
 #include "utils/socket_listener.hxx"
 
@@ -46,11 +49,12 @@
 #include "utils/logging.h"
 #include "utils/macros.h"
 
-#ifndef ESP32 // these don't exist on the ESP32 with LWiP
+#if !defined(ESP_PLATFORM) || CONFIG_IDF_TARGET_LINUX
+// these don't exist on the ESP32 with LWiP
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#endif // ESP32
+#endif // ESP_PLATFORM
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -129,7 +133,7 @@ void SocketListener::AcceptThreadBody()
   // connections to the given socket, so allow some room
   ERRNOCHECK("listen", listen(listenfd, config_socket_listener_backlog()));
 
-  LOG(INFO, "Listening on port %d, fd %d", ntohs(addr.sin_port), listenfd);
+  LOG(VERBOSE, "Listening on port %d, fd %d", ntohs(addr.sin_port), listenfd);
 
 #if OPENMRN_HAVE_BSD_SOCKETS_RX_TIMEOUT
   {

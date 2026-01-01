@@ -34,7 +34,16 @@
 #ifndef _endian_h_
 #define _endian_h_
 
+#if ESP_PLATFORM
+#include "sdkconfig.h"
+#endif
+
 #include <stdint.h>
+
+#if CONFIG_IDF_TARGET_LINUX
+
+#include <byteswap.h>
+#else
 
 /** Byte swap a 16 bit value.
  * @param x value to swap
@@ -70,6 +79,8 @@ static inline uint64_t __bswap_64(uint64_t x)
             ((x & 0x000000000000ff00ULL) << 40) |
             ((x & 0x00000000000000ffULL) << 56));
 }
+
+#endif // CONFIG_IDF_TARGET_LINUX
 
 #ifdef CONFIG_ENDIAN_BIG
     #define htobe16(x) (x)

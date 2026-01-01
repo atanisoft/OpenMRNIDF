@@ -37,6 +37,10 @@
 #ifndef _UTILS_ATOMIC_HXX_
 #define _UTILS_ATOMIC_HXX_
 
+#ifdef ESP_PLATFORM
+#include "sdkconfig.h"
+#endif
+
 #ifdef __FreeRTOS__
 #include <stdint.h>
 #include "FreeRTOS.h"
@@ -71,7 +75,7 @@ public:
     }
 };
 
-#elif defined(ESP32)
+#elif defined(ESP_PLATFORM) && !CONFIG_IDF_TARGET_LINUX
 
 #include "freertos_includes.h"
 

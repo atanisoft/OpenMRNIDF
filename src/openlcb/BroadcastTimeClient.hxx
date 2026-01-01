@@ -38,6 +38,10 @@
 #include "openlcb/BroadcastTime.hxx"
 #include "openlcb/BroadcastTimeAlarm.hxx"
 
+#if ESP_PLATFORM
+#include <mutex>
+#endif
+
 namespace openlcb
 {
 
@@ -338,7 +342,11 @@ private:
             time_t old_seconds = 0;
             time_t new_seconds = 0;
             {
+#if ESP_PLATFORM
+                const std::lock_guard<std::mutex> lock(lock_);
+#else
                 AtomicHolder h(this);
+#endif
                 old_seconds = time();
                 if (rate_ != rateRequested_ ||
                     (immediateUpdate_ && immediatePending_))
@@ -442,6 +450,14 @@ private:
     uint16_t rolloverPendingYear_ : 1; ///< a day rollover is about to occur
     uint16_t serverDetected_      : 1; ///< has a time server been detected
 
+#if ESP_PLATFORM
+    /// Due to a recursive spinlock_t (portMUX_TYPE) initialization issue with
+    /// newlib used on the ESP platform it is necessary to use an alternative
+    /// lock type to protect data other than using @ref Atomic when calling
+    /// mktime(..) otherwise abort() will be called due to lock initialization
+    /// failure.
+    std::mutex lock_; 
+#endif
 
     DISALLOW_COPY_AND_ASSIGN(BroadcastTimeClient);
 };

@@ -74,9 +74,7 @@ TrainNodeForProxy::TrainNodeForProxy(TrainService *service, TrainImpl *train)
 
 TrainNodeForProxy::~TrainNodeForProxy()
 {
-    /// @todo enable this line of code. It currently breaks unit tests due to
-    /// bugs
-    // service_->unregister_train(this);
+    service_->unregister_train(this);
 }
 
 TrainNodeWithId::TrainNodeWithId(
@@ -89,9 +87,7 @@ TrainNodeWithId::TrainNodeWithId(
 
 TrainNodeWithId::~TrainNodeWithId()
 {
-    /// @todo enable this line of code. It currently breaks unit tests due to
-    /// bugs
-    // service_->unregister_train(this);
+    service_->unregister_train(this);
 }
 
 NodeID TrainNodeForProxy::node_id()

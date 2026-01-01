@@ -36,6 +36,10 @@
 
 #include "executor/CallableFlow.hxx"
 
+#if ESP_PLATFORM
+#include <mutex>
+#endif
+
 namespace openlcb
 {
 
@@ -589,7 +593,11 @@ private:
         }
 
         {
+#if ESP_PLATFORM
+            const std::lock_guard<std::mutex> lock(lock_);
+#else
             AtomicHolder h(server_);
+#endif
             server_->seconds_ = mktime(&tm);
             server_->timestamp_ = OSTime::get_monotonic();
             new_seconds = server_->seconds_;
@@ -639,6 +647,14 @@ private:
     }
 
     BroadcastTimeServer *server_; ///< reference to our parent
+#if ESP_PLATFORM
+    /// Due to a recursive spinlock_t (portMUX_TYPE) initialization issue with
+    /// newlib used on the ESP platform it is necessary to use an alternative
+    /// lock type to protect data other than using @ref Atomic when calling
+    /// mktime(..) otherwise abort() will be called due to lock initialization
+    /// failure.
+    std::mutex lock_; 
+#endif
     WriteHelper writer_; ///< helper for sending event messages
     StateFlowTimer timer_; ///< timer helper
     uint8_t requestCount_; ///< counter to know when there are no more requests

@@ -224,7 +224,9 @@ StateFlowBase::Action EventIteratorFlow::entry()
             set_priority(4);
             break;
         default:
-            DIE("Unexpected message arrived at the global event handler.");
+            LOG(INFO,
+                "Unexpected message arrived at the global event handler.");
+            return release_and_exit();
     } //    case
     // The incoming message is not needed anymore.
     incomingDone_ = message()->new_child();
@@ -296,6 +298,11 @@ InlineEventIteratorFlow::dispatch_event(const EventRegistryEntry *entry)
     if (eventRegistryEpoch_ != eventService_->impl()->registry->get_epoch())
     {
         // Will restart iteration.
+        return call_immediately(STATE(iterate_next));
+    }
+    if (currentEntry_ == nullptr || currentEntry_->handler == nullptr)
+    {
+        // start the next item to be iterated.
         return call_immediately(STATE(iterate_next));
     }
     n_.reset(this);
