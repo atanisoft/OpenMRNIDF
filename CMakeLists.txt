@@ -19,7 +19,8 @@ set(IDF_DEPS
     hal
     heap
     vfs
-    mdns)
+    mdns
+    esp_wifi)
 
 # starting in IDF v5 esp_ipc component has been merged into esp_system
 if (IDF_VERSION_MAJOR LESS 5)
