@@ -20,6 +20,8 @@ set(IDF_DEPS
     heap
     vfs
     mdns
+    pthread
+    esp_timer
     esp_wifi)
 
 # starting in IDF v5 esp_ipc component has been merged into esp_system
